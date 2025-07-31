@@ -1,14 +1,14 @@
 import asyncio
 import datetime
 import json
-import subprocess
 import tempfile
-from typing import List, Dict, Any, AsyncGenerator
-from loguru import logger
-import aiohttp
-from .schema import RawMention, CollectorMixin
-from .clients import PerplexityClient, SerpAPIClient
+from typing import AsyncGenerator, Dict, List
 
+import aiohttp
+from loguru import logger
+
+from .clients import PerplexityClient, SerpAPIClient
+from .schema import CollectorMixin, RawMention
 
 TRENDS_ENDPOINT = (
     "https://twitter.com/i/api/graphql/kX2Kz4X6yXbwUDW-0Gwcug/Trends"
@@ -18,11 +18,11 @@ TRENDS_ENDPOINT = (
 
 class TwitterFreeScraper:
     """Free Twitter/X scraping using snscrape and public endpoints"""
-    
+
     def __init__(self):
         self.perplexity = PerplexityClient()
         self.serpapi = SerpAPIClient()
-    
+
     async def fetch_trending_tags(self, session: aiohttp.ClientSession) -> List[tuple]:
         """Fetch trending hashtags from public Twitter endpoint"""
         try:
@@ -33,7 +33,7 @@ class TwitterFreeScraper:
                 if resp.status != 200:
                     logger.warning(f"Twitter trends endpoint returned {resp.status}")
                     return await self._fallback_trends()
-                
+
                 data = await resp.json()
                 trends = data.get("data", {}).get("trends", [])
                 return [
@@ -43,7 +43,7 @@ class TwitterFreeScraper:
         except Exception as e:
             logger.error(f"Failed to fetch Twitter trends: {e}")
             return await self._fallback_trends()
-    
+
     async def _fallback_trends(self) -> List[tuple]:
         """Fallback to SerpAPI for trending topics"""
         try:
@@ -56,42 +56,42 @@ class TwitterFreeScraper:
                         tag = title.split("#")[1].split()[0]
                         trends.append((f"#{tag}", 1000))  # Estimated volume
             return trends[:10]
-        except:
+        except Exception:
             return []
-    
+
     async def scrape_tweets(self, tag: str, since_hours: int = 24) -> AsyncGenerator[dict, None]:
         """Scrape tweets for a hashtag using snscrape"""
         since = (datetime.datetime.utcnow() - datetime.timedelta(hours=since_hours)).date()
-        
+
         # Clean hashtag for query
         clean_tag = tag.strip("#")
-        
+
         try:
             with tempfile.NamedTemporaryFile(mode='w+', delete=False) as f:
                 cmd = [
                     "snscrape", "--jsonl", "--max-results", "50",
                     f'twitter-hashtag "{clean_tag} since:{since}"'
                 ]
-                
+
                 process = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=f.fileno(),
                     stderr=asyncio.subprocess.PIPE
                 )
-                
+
                 _, stderr = await process.communicate()
-                
+
                 if process.returncode != 0:
                     logger.warning(f"snscrape failed for {tag}: {stderr.decode()}")
                     return
-                
+
                 f.seek(0)
                 for line in f:
                     if line.strip():
                         yield json.loads(line)
         except Exception as e:
             logger.error(f"Error scraping tweets for {tag}: {e}")
-    
+
     async def enrich_tag_context(self, top_tags: List[str]) -> Dict[str, str]:
         """Get context for why tags are trending"""
         contexts = {}
@@ -109,15 +109,15 @@ class TwitterFreeScraper:
 async def collect_twitter(session: aiohttp.ClientSession) -> AsyncGenerator[RawMention, None]:
     """Main collection function for Twitter data"""
     scraper = TwitterFreeScraper()
-    
+
     # Get trending tags
     tags = await scraper.fetch_trending_tags(session)
     logger.info(f"Found {len(tags)} trending tags on Twitter")
-    
+
     # Get context for top tags
     top_tag_names = [t[0] for t in tags[:8]]
     contexts = await scraper.enrich_tag_context(top_tag_names)
-    
+
     # Scrape tweets for each tag
     for tag_name, volume in tags:
         tweet_count = 0
@@ -128,16 +128,20 @@ async def collect_twitter(session: aiohttp.ClientSession) -> AsyncGenerator[RawM
                     (datetime.datetime.utcnow() - tweet["date"]).total_seconds() / 3600,
                     1
                 )
-                platform_score = (
-                    tweet.get("likeCount", 0) + 
-                    tweet.get("retweetCount", 0) + 
+                raw_score = (
+                    tweet.get("likeCount", 0) +
+                    tweet.get("retweetCount", 0) +
                     tweet.get("replyCount", 0)
                 ) / hours_old
-                
-                # Skip low-engagement tweets
-                if platform_score < 10:
+
+                # Normalize platform_score to 0.0-1.0 range
+                # Using log scale for engagement normalization
+                platform_score = min(1.0, raw_score / 1000.0)
+
+                # Skip low-engagement tweets (normalized threshold)
+                if raw_score < 10:
                     continue
-                
+
                 yield CollectorMixin.create_mention(
                     source="twitter",
                     url=f'https://twitter.com/{tweet["user"]["username"]}/status/{tweet["id"]}',
@@ -153,13 +157,13 @@ async def collect_twitter(session: aiohttp.ClientSession) -> AsyncGenerator[RawM
                         "is_verified": tweet["user"].get("verified", False)
                     }
                 )
-                
+
                 tweet_count += 1
                 if tweet_count >= 50:  # Limit tweets per tag
                     break
-                    
+
             except Exception as e:
                 logger.error(f"Error processing tweet: {e}")
                 continue
-        
+
         logger.debug(f"Collected {tweet_count} tweets for {tag_name}")

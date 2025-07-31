@@ -1,5 +1,7 @@
 # Envy Zeitgeist Engine
 
+[![CI](https://github.com/envy-media/envy-zeitgeist-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/envy-media/envy-zeitgeist-engine/actions/workflows/ci.yml) [![Security](https://github.com/envy-media/envy-zeitgeist-engine/actions/workflows/security.yml/badge.svg)](https://github.com/envy-media/envy-zeitgeist-engine/actions/workflows/security.yml) [![Documentation](https://github.com/envy-media/envy-zeitgeist-engine/actions/workflows/docs.yml/badge.svg)](https://github.com/envy-media/envy-zeitgeist-engine/actions/workflows/docs.yml) [![Coverage](https://img.shields.io/badge/coverage-74%25-orange)](https://github.com/envy-media/envy-zeitgeist-engine/actions/workflows/ci.yml) [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A **lean, agent‑based pipeline** that ingests raw pop‑culture signals, enriches them with LLM context, and surfaces ranked, ready‑to‑discuss trends for eNVy Media shows (*The Viall Files*, *Ask Nick*, etc.).
 
 ---
@@ -120,6 +122,39 @@ Use `docker‑compose` or your orchestrator of choice to schedule daily runs.
 ruff .               # lint + formatting check
 pytest               # unit tests for collectors & agents
 ```
+
+---
+
+## 🚀 CI/CD Pipeline
+
+This project uses GitHub Actions for comprehensive CI/CD with the following workflows:
+
+### Quality Gates (`ci.yml`)
+- **Triggers**: Push to main/develop, Pull Requests
+- **Matrix Testing**: Python 3.11 and 3.12
+- **Steps**: Install dependencies → Lint (Ruff) → Type check (MyPy) → Test (Pytest) → Coverage (74%+)
+- **Caching**: Poetry dependencies and virtual environments for faster builds
+
+### Security Scanning (`security.yml`)
+- **Triggers**: Push, PR, Daily schedule (2 AM UTC)
+- **Scans**: Safety (dependency vulnerabilities) → Bandit (security linter) → GitLeaks (secrets) → CodeQL (code analysis)
+- **Dependency Review**: Automated checks on PRs for known vulnerabilities
+
+### Deployment Pipeline (`deploy.yml`)
+- **Triggers**: Push to main, version tags, manual dispatch
+- **Multi-arch Builds**: Docker images for linux/amd64 and linux/arm64
+- **Environments**: Staging (automatic) → Production (manual approval)
+- **Security**: Trivy vulnerability scanning of container images
+
+### Documentation (`docs.yml`)
+- **Triggers**: Push to main, documentation changes
+- **Features**: Auto-generate API docs → Update README badges → Deploy to GitHub Pages
+- **Validation**: Link checking and markdown formatting
+
+### Additional Features
+- **Dependabot**: Weekly dependency updates for Python, GitHub Actions, and Docker
+- **Issue Templates**: Structured bug reports and feature requests
+- **PR Templates**: Comprehensive checklists for code review
 
 ---
 

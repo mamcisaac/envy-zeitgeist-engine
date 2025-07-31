@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import aiohttp
-import feedparser  # type: ignore
+import feedparser
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 

@@ -1,10 +1,8 @@
+import asyncio
 from datetime import datetime, timedelta
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.operators.docker_operator import DockerOperator
-import asyncio
-import os
-
 
 default_args = {
     'owner': 'envy-media',

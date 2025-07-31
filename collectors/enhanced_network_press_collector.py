@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin, urlparse
 
 import aiohttp
-import feedparser  # type: ignore[import-untyped]
+import feedparser
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
@@ -272,7 +272,7 @@ class EnhancedNetworkPressCollector(CollectorMixin):
                     for article in articles[:20]:  # Limit to 20
                         if not hasattr(article, 'find'):
                             continue
-                            
+
                         title = ""
                         content = ""
                         article_url = url

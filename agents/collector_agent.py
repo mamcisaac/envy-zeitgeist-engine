@@ -1,18 +1,21 @@
 import asyncio
 import hashlib
 from datetime import datetime
-from typing import List, Dict, Any, Set
-from loguru import logger
-import aiohttp
+from typing import Any, Dict, List
 
-from envy_toolkit.schema import RawMention
+import aiohttp
+from loguru import logger
+
 from envy_toolkit.clients import (
-    SupabaseClient, LLMClient, SerpAPIClient, 
-    RedditClient, PerplexityClient
+    LLMClient,
+    PerplexityClient,
+    RedditClient,
+    SerpAPIClient,
+    SupabaseClient,
 )
 from envy_toolkit.duplicate import DuplicateDetector
+from envy_toolkit.schema import RawMention
 from envy_toolkit.twitter_free import collect_twitter
-
 
 WHITELIST_DOMAINS = {
     "reddit.com", "twitter.com", "x.com", "tiktok.com", "instagram.com",
@@ -34,40 +37,40 @@ SEED_QUERIES = [
 
 class CollectorAgent:
     """Main collector agent that orchestrates all data sources"""
-    
-    def __init__(self):
+
+    def __init__(self) -> None:
         self.supabase = SupabaseClient()
         self.llm = LLMClient()
         self.serpapi = SerpAPIClient()
         self.reddit = RedditClient()
         self.perplexity = PerplexityClient()
         self.deduper = DuplicateDetector()
-        
+
     async def run(self) -> None:
         """Main collection pipeline"""
         logger.info("Starting CollectorAgent run")
-        
+
         # Collect from all sources
         raw_mentions = await self._scrape_all_sources()
         logger.info(f"Collected {len(raw_mentions)} raw mentions")
-        
+
         # Validate and clean
         valid_mentions = [m for m in raw_mentions if self._validate_item(m)]
         logger.info(f"Validated {len(valid_mentions)} mentions")
-        
+
         # Deduplicate
         unique_mentions = self.deduper.filter_duplicates(
             [m.model_dump() for m in valid_mentions]
         )
         logger.info(f"After deduplication: {len(unique_mentions)} unique mentions")
-        
+
         # Add embeddings
         enriched_mentions = await self._add_embeddings(unique_mentions)
-        
+
         # Write to database
         await self.supabase.bulk_insert_mentions(enriched_mentions)
         logger.info("CollectorAgent run complete")
-    
+
     def _validate_item(self, item: RawMention) -> bool:
         """Validate that a mention is real and has required data"""
         # Check domain whitelist
@@ -80,36 +83,36 @@ class CollectorAgent:
                 # Remove www. prefix if present
                 if domain.startswith("www."):
                     domain = domain[4:]
-        
+
         if domain not in WHITELIST_DOMAINS:
             logger.debug(f"Rejected URL from unknown domain: {domain}")
             return False
-        
+
         # Must have engagement score
         if not item.platform_score or item.platform_score <= 0:
-            logger.debug(f"Rejected item with no engagement score")
+            logger.debug("Rejected item with no engagement score")
             return False
-        
+
         # Must have title and body
         if not item.title or not item.body:
-            logger.debug(f"Rejected item with missing title/body")
+            logger.debug("Rejected item with missing title/body")
             return False
-        
+
         # Must be recent (within 48 hours)
         age_hours = (datetime.utcnow() - item.timestamp).total_seconds() / 3600
         if age_hours > 48:
-            logger.debug(f"Rejected item older than 48 hours")
+            logger.debug("Rejected item older than 48 hours")
             return False
-        
+
         return True
-    
+
     async def _scrape_all_sources(self) -> List[RawMention]:
         """Collect from all configured sources"""
-        all_mentions = []
-        
+        all_mentions: List[RawMention] = []
+
         # Get expanded queries
         queries = await self._expand_queries(SEED_QUERIES)
-        
+
         async with aiohttp.ClientSession() as session:
             # Collect from all sources in parallel
             tasks = [
@@ -118,25 +121,25 @@ class CollectorAgent:
                 self._collect_news(queries),
                 self._collect_entertainment_sites(session)
             ]
-            
+
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            
+
             for result in results:
                 if isinstance(result, Exception):
                     logger.error(f"Collection task failed: {result}")
-                else:
+                elif isinstance(result, list):
                     all_mentions.extend(result)
-        
+
         return all_mentions
-    
+
     async def _expand_queries(self, seed_queries: List[str]) -> List[str]:
         """Use LLM to expand queries with Gen-Z slang and variations"""
         prompt = """For each query below, provide 2 alternative phrasings that Gen-Z might use on social media.
         Include slang, abbreviations, and trending phrases. Format: one query per line.
-        
+
         Queries:
         {}""".format("\n".join(seed_queries))
-        
+
         try:
             response = await self.llm.generate(prompt, model="gpt-4o", max_tokens=500)
             expanded = response.strip().split("\n")
@@ -145,7 +148,7 @@ class CollectorAgent:
         except Exception as e:
             logger.error(f"Query expansion failed: {e}")
             return seed_queries
-    
+
     async def _collect_twitter(self, session: aiohttp.ClientSession) -> List[RawMention]:
         """Collect from Twitter using free scraping"""
         mentions = []
@@ -155,7 +158,7 @@ class CollectorAgent:
         except Exception as e:
             logger.error(f"Twitter collection failed: {e}")
         return mentions
-    
+
     async def _collect_reddit(self, queries: List[str]) -> List[RawMention]:
         """Collect from Reddit for entertainment subreddits"""
         subreddits = [
@@ -163,7 +166,7 @@ class CollectorAgent:
             "thebachelor", "LoveIslandUSA", "BravoRealHousewives",
             "TeenMomOGandTeenMom2", "KUWTK", "popheads"
         ]
-        
+
         mentions = []
         for sub in subreddits:
             for query in queries[:3]:  # Limit queries per subreddit
@@ -176,7 +179,7 @@ class CollectorAgent:
                             1
                         )
                         platform_score = (post["score"] + post["num_comments"] * 2) / hours_old
-                        
+
                         mentions.append(RawMention(
                             id=post["id"],
                             source="reddit",
@@ -190,28 +193,28 @@ class CollectorAgent:
                         ))
                 except Exception as e:
                     logger.error(f"Reddit collection failed for r/{sub}: {e}")
-        
+
         return mentions
-    
+
     async def _collect_news(self, queries: List[str]) -> List[RawMention]:
         """Collect from news via SerpAPI"""
         mentions = []
-        
+
         for query in queries:
             try:
                 # Search news
                 news_results = await self.serpapi.search_news(query + " entertainment celebrity")
-                
+
                 for result in news_results[:10]:
                     # Skip if not from whitelist domain
                     link = result.get("link", "")
                     domain = link.split("/")[2] if "://" in link and len(link.split("/")) > 2 else ""
                     if domain not in WHITELIST_DOMAINS:
                         continue
-                    
+
                     # Estimate engagement based on position
                     position_score = 100 / (result.get("position", 1) + 1)
-                    
+
                     mentions.append(RawMention(
                         id=hashlib.sha256(link.encode()).hexdigest(),
                         source="news",
@@ -225,28 +228,28 @@ class CollectorAgent:
                     ))
             except Exception as e:
                 logger.error(f"News collection failed for query '{query}': {e}")
-        
+
         return mentions
-    
+
     async def _collect_entertainment_sites(self, session: aiohttp.ClientSession) -> List[RawMention]:
         """Collect from all registered entertainment site collectors"""
         from collectors import registry
-        
-        all_mentions = []
-        
+
+        all_mentions: List[RawMention] = []
+
         # Run all collectors in parallel
         tasks = [collector(session) for collector in registry]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.error(f"Collector {i} failed: {result}")
-            else:
+            elif isinstance(result, list):
                 all_mentions.extend(result)
                 logger.info(f"Collector {i} returned {len(result)} mentions")
-        
+
         return all_mentions
-    
+
     async def _add_embeddings(self, mentions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Add OpenAI embeddings to mentions"""
         for mention in mentions:
@@ -257,11 +260,11 @@ class CollectorAgent:
             except Exception as e:
                 logger.error(f"Failed to generate embedding: {e}")
                 mention['embedding'] = None
-        
+
         return mentions
 
 
-async def main():
+async def main() -> None:
     """Run the collector agent"""
     agent = CollectorAgent()
     await agent.run()

@@ -5,7 +5,7 @@ This module provides a centralized registry of all available collectors
 and their collection functions for easy access by the CollectorAgent.
 """
 
-from typing import List, Callable, Awaitable
+from typing import Awaitable, Callable, List
 
 from envy_toolkit.schema import RawMention
 

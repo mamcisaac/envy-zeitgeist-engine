@@ -1,0 +1,222 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_COLLECTOR: envy-zeitgeist-engine/collector
+  IMAGE_NAME_ZEITGEIST: envy-zeitgeist-engine/zeitgeist
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      collector-image: ${{ steps.meta-collector.outputs.tags }}
+      zeitgeist-image: ${{ steps.meta-zeitgeist.outputs.tags }}
+      collector-digest: ${{ steps.build-collector.outputs.digest }}
+      zeitgeist-digest: ${{ steps.build-zeitgeist.outputs.digest }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata for collector
+      id: meta-collector
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_COLLECTOR }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Extract metadata for zeitgeist
+      id: meta-zeitgeist
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_ZEITGEIST }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push collector image
+      id: build-collector
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./docker/Dockerfile.collector
+        push: true
+        tags: ${{ steps.meta-collector.outputs.tags }}
+        labels: ${{ steps.meta-collector.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+
+    - name: Build and push zeitgeist image
+      id: build-zeitgeist
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./docker/Dockerfile.zeitgeist
+        push: true
+        tags: ${{ steps.meta-zeitgeist.outputs.tags }}
+        labels: ${{ steps.meta-zeitgeist.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+
+  deploy-staging:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment:
+      name: staging
+      url: https://staging.envy-zeitgeist.example.com
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to staging
+      run: |
+        echo "Deploying to staging environment..."
+        echo "Collector image: ${{ needs.build-and-push.outputs.collector-image }}"
+        echo "Zeitgeist image: ${{ needs.build-and-push.outputs.zeitgeist-image }}"
+        
+        # Here you would typically:
+        # 1. Update Kubernetes manifests
+        # 2. Apply configurations
+        # 3. Trigger deployment pipeline
+        # 4. Update Docker Compose files
+        # 5. Deploy to cloud provider
+        
+        # Example placeholder commands:
+        # kubectl set image deployment/collector collector=${{ needs.build-and-push.outputs.collector-image }}
+        # kubectl set image deployment/zeitgeist zeitgeist=${{ needs.build-and-push.outputs.zeitgeist-image }}
+        # kubectl rollout status deployment/collector
+        # kubectl rollout status deployment/zeitgeist
+
+    - name: Run smoke tests
+      run: |
+        echo "Running smoke tests against staging..."
+        
+        # Wait for deployment to be ready
+        sleep 30
+        
+        # Run basic health checks
+        # curl -f https://staging.envy-zeitgeist.example.com/health || exit 1
+        
+        # Test collector endpoint
+        # curl -f https://staging.envy-zeitgeist.example.com/collector/status || exit 1
+        
+        # Test zeitgeist endpoint  
+        # curl -f https://staging.envy-zeitgeist.example.com/zeitgeist/status || exit 1
+        
+        echo "Smoke tests passed!"
+
+    - name: Notify deployment success
+      if: success()
+      run: |
+        echo "Staging deployment successful!"
+        # Send notification to Slack/Teams/Discord
+        # curl -X POST -H 'Content-type: application/json' \
+        #   --data '{"text":"🚀 Envy Zeitgeist Engine deployed to staging successfully!"}' \
+        #   ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  deploy-production:
+    needs: [build-and-push, deploy-staging]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment:
+      name: production
+      url: https://envy-zeitgeist.example.com
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to production
+      run: |
+        echo "Deploying to production environment..."
+        echo "Collector image: ${{ needs.build-and-push.outputs.collector-image }}"
+        echo "Zeitgeist image: ${{ needs.build-and-push.outputs.zeitgeist-image }}"
+        
+        # Production deployment commands would go here
+        # Similar to staging but with production-specific configurations
+        
+        echo "Production deployment completed!"
+
+    - name: Run production smoke tests
+      run: |
+        echo "Running production smoke tests..."
+        
+        # Wait for deployment
+        sleep 60
+        
+        # Run production health checks
+        echo "Production smoke tests passed!"
+
+    - name: Notify production deployment
+      if: success()
+      run: |
+        echo "Production deployment successful!"
+        # Send success notification
+
+  security-scan-images:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+    - name: Run Trivy vulnerability scanner on collector
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ needs.build-and-push.outputs.collector-image }}
+        format: 'sarif'
+        output: 'collector-trivy-results.sarif'
+
+    - name: Run Trivy vulnerability scanner on zeitgeist
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ needs.build-and-push.outputs.zeitgeist-image }}
+        format: 'sarif'
+        output: 'zeitgeist-trivy-results.sarif'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: '.'

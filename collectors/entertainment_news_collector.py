@@ -7,7 +7,7 @@ import logging
 import os
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import aiohttp
 import feedparser
@@ -327,27 +327,27 @@ class EntertainmentNewsCollector(CollectorMixin):
                 )
 
                 for element in article_elements[:15]:  # Limit results
-                    title_elem = element.find(  # type: ignore
+                    title_elem = cast(Any, element).find(
                         ["h1", "h2", "h3", "h4"],
                         class_=re.compile(r"(title|headline)", re.I),
                     )
                     link_elem = element.find("a", href=True)  # type: ignore
 
                     if title_elem and link_elem:
-                        title = title_elem.get_text(strip=True)  # type: ignore
-                        url = link_elem["href"]  # type: ignore
+                        title = title_elem.get_text(strip=True)
+                        url = cast(Any, link_elem)["href"]
 
                         # Make relative URLs absolute
                         if url.startswith("/"):
                             url = f"https://www.usmagazine.com{url}"
 
                         # Extract snippet if available
-                        snippet_elem = element.find(  # type: ignore
+                        snippet_elem = cast(Any, element).find(
                             ["p", "div"],
                             class_=re.compile(r"(excerpt|summary|description)", re.I),
                         )
                         content_text = (
-                            snippet_elem.get_text(strip=True) if snippet_elem else ""  # type: ignore
+                            snippet_elem.get_text(strip=True) if snippet_elem else ""
                         )
 
                         # Check if reality TV related
@@ -404,7 +404,7 @@ class EntertainmentNewsCollector(CollectorMixin):
 
         try:
             # Import serpapi here to avoid dependency issues if not installed
-            from serpapi import GoogleSearch  # type: ignore
+            from serpapi import GoogleSearch
 
             # Search for recent reality TV news
             search_query = f"{search_site} (reality TV OR love island OR big brother OR bachelorette OR real housewives) 2025"
