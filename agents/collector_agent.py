@@ -77,6 +77,9 @@ class CollectorAgent:
             parts = url.split("/")
             if len(parts) >= 3:
                 domain = parts[2].lower()
+                # Remove www. prefix if present
+                if domain.startswith("www."):
+                    domain = domain[4:]
         
         if domain not in WHITELIST_DOMAINS:
             logger.debug(f"Rejected URL from unknown domain: {domain}")
@@ -226,10 +229,23 @@ class CollectorAgent:
         return mentions
     
     async def _collect_entertainment_sites(self, session: aiohttp.ClientSession) -> List[RawMention]:
-        """Direct scraping of entertainment sites (placeholder for actual collectors)"""
-        # This is where you would integrate the actual entertainment collectors
-        # For now, returning empty list to avoid placeholder data
-        return []
+        """Collect from all registered entertainment site collectors"""
+        from collectors import registry
+        
+        all_mentions = []
+        
+        # Run all collectors in parallel
+        tasks = [collector(session) for collector in registry]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Collector {i} failed: {result}")
+            else:
+                all_mentions.extend(result)
+                logger.info(f"Collector {i} returned {len(result)} mentions")
+        
+        return all_mentions
     
     async def _add_embeddings(self, mentions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Add OpenAI embeddings to mentions"""

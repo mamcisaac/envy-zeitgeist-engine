@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from loguru import logger
 import openai
 import anthropic
-from serpapi import GoogleSearch
+from serpapi import search
 import praw
 from supabase import create_client, Client
 import tiktoken
@@ -26,10 +26,10 @@ class SerpAPIClient:
             "api_key": self.api_key,
             "num": num_results,
             "hl": "en",
-            "gl": "us"
+            "gl": "us",
+            "engine": "google"
         }
-        search = GoogleSearch(params)
-        results = search.get_dict()
+        results = search(params)
         return results.get("organic_results", [])
     
     async def search_news(self, query: str) -> List[Dict[str, Any]]:
@@ -37,10 +37,10 @@ class SerpAPIClient:
             "q": query,
             "api_key": self.api_key,
             "tbm": "nws",  # News search
-            "num": 20
+            "num": 20,
+            "engine": "google"
         }
-        search = GoogleSearch(params)
-        results = search.get_dict()
+        results = search(params)
         return results.get("news_results", [])
 
 
