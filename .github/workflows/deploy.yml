@@ -74,7 +74,7 @@ jobs:
 
     - name: Build and push collector image
       id: build-collector
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: .
         file: ./docker/Dockerfile.collector
@@ -87,7 +87,7 @@ jobs:
 
     - name: Build and push zeitgeist image
       id: build-zeitgeist
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: .
         file: ./docker/Dockerfile.zeitgeist
