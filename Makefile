@@ -179,11 +179,7 @@ docs-serve: ## Serve documentation locally
 
 # Utility targets
 env-check: ## Check environment variables
-	@echo "Checking required environment variables..."
-	@test -n "$$SUPABASE_URL" || (echo "❌ SUPABASE_URL not set" && exit 1)
-	@test -n "$$SUPABASE_ANON_KEY" || (echo "❌ SUPABASE_ANON_KEY not set" && exit 1)
-	@test -n "$$OPENAI_API_KEY" || (echo "❌ OPENAI_API_KEY not set" && exit 1)
-	@echo "✓ All required environment variables are set"
+	@$(PYTHON) scripts/validate_environment.py
 
 install-hooks: ## Install git hooks
 	pre-commit install

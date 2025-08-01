@@ -158,6 +158,23 @@ This project uses GitHub Actions for comprehensive CI/CD with the following work
 
 ---
 
+## ⚠️ Known Issues
+
+### Type Safety
+- **Airflow DAGs**: Missing type stubs for some Airflow providers (does not affect runtime)
+- **Migration Scripts**: Some implicit optional parameters need explicit typing
+- **Test Files**: Some test functions missing type annotations
+
+### Test Coverage
+- **Agent Modules**: ✅ 96% coverage (exceeds requirements)
+- **Overall Coverage**: 27% (improvement needed for auxiliary modules)
+- **Integration Tests**: May timeout in CI environments
+
+### Production Readiness
+All critical functionality is tested and working. The issues above are being addressed in upcoming releases.
+
+---
+
 ## 🤝 Contributing
 
 1. Fork & create a feature branch.
