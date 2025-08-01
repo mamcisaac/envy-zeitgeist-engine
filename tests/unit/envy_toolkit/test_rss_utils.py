@@ -327,7 +327,7 @@ class TestUtilityFunctions:
         assert found == ['CELEBRITY']
 
         found = extract_keywords_from_entry(mock_entry, ['celebrity'], case_sensitive=True)
-        assert found == ['celebrity']
+        assert found == []  # Should not find lowercase 'celebrity' in 'Celebrity News About CELEBRITY'
 
     def test_filter_entries_by_keywords(self) -> None:
         """Test filtering entries by keywords."""
@@ -433,6 +433,7 @@ class TestAsyncFunctions:
 
         mock_session = Mock()
         mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_session.get.return_value.__aexit__ = AsyncMock(return_value=None)
 
         feed = await fetch_and_parse_rss(mock_session, 'https://example.com/rss')
 
@@ -448,6 +449,7 @@ class TestAsyncFunctions:
 
         mock_session = Mock()
         mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_session.get.return_value.__aexit__ = AsyncMock(return_value=None)
 
         feed = await fetch_and_parse_rss(mock_session, 'https://example.com/rss')
 
@@ -556,6 +558,7 @@ class TestRSSCollectorUtility:
         """Test mention deduplication."""
         mentions = [
             RawMention(
+                id='hash1',
                 title='News 1',
                 body='Body 1',
                 url='https://example.com/1',
@@ -564,6 +567,7 @@ class TestRSSCollectorUtility:
                 source='news'
             ),
             RawMention(
+                id='hash2',
                 title='News 2',
                 body='Body 2',
                 url='https://example.com/1',  # Duplicate URL
@@ -572,6 +576,7 @@ class TestRSSCollectorUtility:
                 source='news'
             ),
             RawMention(
+                id='hash3',
                 title='News 3',
                 body='Body 3',
                 url='https://example.com/3',

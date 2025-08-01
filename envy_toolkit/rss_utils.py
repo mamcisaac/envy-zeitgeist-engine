@@ -69,28 +69,44 @@ class RSSEntry:
 
     def _parse_timestamp(self) -> datetime:
         """Parse timestamp from various fields."""
-        # Try published_parsed first
-        if hasattr(self.entry, 'published_parsed') and self.entry.published_parsed:
+        # Try published_parsed first (both attribute and dict key)
+        published_parsed = None
+        if hasattr(self.entry, 'published_parsed'):
+            published_parsed = self.entry.published_parsed
+        elif isinstance(self.entry, dict) and 'published_parsed' in self.entry:
+            published_parsed = self.entry['published_parsed']
+
+        if published_parsed:
             try:
-                return datetime(*self.entry.published_parsed[:6])
+                return datetime(*published_parsed[:6])
             except (TypeError, ValueError):
                 pass
 
-        # Try updated_parsed
-        if hasattr(self.entry, 'updated_parsed') and self.entry.updated_parsed:
+        # Try updated_parsed (both attribute and dict key)
+        updated_parsed = None
+        if hasattr(self.entry, 'updated_parsed'):
+            updated_parsed = self.entry.updated_parsed
+        elif isinstance(self.entry, dict) and 'updated_parsed' in self.entry:
+            updated_parsed = self.entry['updated_parsed']
+
+        if updated_parsed:
             try:
-                return datetime(*self.entry.updated_parsed[:6])
+                return datetime(*updated_parsed[:6])
             except (TypeError, ValueError):
                 pass
 
         # Try parsing string dates
         for field in ['published', 'updated', 'created']:
+            date_str = None
             if hasattr(self.entry, field):
                 date_str = getattr(self.entry, field)
-                if date_str:
-                    timestamp = parse_date_string(date_str)
-                    if timestamp:
-                        return timestamp
+            elif isinstance(self.entry, dict) and field in self.entry:
+                date_str = self.entry[field]
+
+            if date_str:
+                timestamp = parse_date_string(date_str)
+                if timestamp:
+                    return timestamp
 
         # Default to current time
         logger.warning(f"Could not parse timestamp for entry: {self.title}")
@@ -257,7 +273,14 @@ def clean_html_content(html_text: Optional[str]) -> str:
 
     try:
         soup = BeautifulSoup(html_text, 'html.parser')
-        return soup.get_text(separator=' ', strip=True)
+        text = soup.get_text(separator=' ')
+        # Normalize whitespace and handle punctuation
+        import re
+        # First normalize all whitespace to single spaces
+        text = re.sub(r'\s+', ' ', text)
+        # Fix spaces before punctuation
+        text = re.sub(r'\s+([.!?,:;])', r'\1', text)
+        return text.strip()
     except Exception as e:
         logger.warning(f"Error cleaning HTML: {e}")
         return html_text
