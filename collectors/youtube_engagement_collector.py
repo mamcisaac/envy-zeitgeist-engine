@@ -242,9 +242,10 @@ class YouTubeEngagementCollector(CollectorMixin):
                 except Exception as e:
                     logger.warning(f"Could not parse published date '{published_at}': {e}")
 
-            # Calculate platform score: (likes + comments + shares) / max(age_hours, 1)
-            # Note: YouTube API doesn't provide share count, so we use views as proxy
-            platform_score = (like_count + comment_count) / age_hours
+            # Calculate platform score: (likes + comments) / max(age_hours, 1)
+            # Normalize to be between 0 and 1
+            raw_score = (like_count + comment_count) / age_hours
+            platform_score = min(raw_score / 10000.0, 1.0)  # Normalize and cap at 1.0
 
             # Extract entities (mentioned shows/celebrities) from title and description
             entities = self._extract_entities(snippet.get('title', ''), snippet.get('description', ''))

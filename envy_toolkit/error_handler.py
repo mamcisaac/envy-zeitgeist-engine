@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from .exceptions import (
-    EnvyBaseException,
+    EnvyBaseError,
     ErrorCategory,
     ErrorSeverity,
     get_error_severity,
@@ -34,7 +34,7 @@ class ErrorStats:
     def __init__(self, window_minutes: int = 60, max_errors: int = 1000) -> None:
         self.window_minutes = window_minutes
         self.max_errors = max_errors
-        self.errors: deque = deque(maxlen=max_errors)
+        self.errors: deque[Dict[str, Any]] = deque(maxlen=max_errors)
         self.error_counts: Dict[str, int] = defaultdict(int)
         self.severity_counts: Dict[str, int] = defaultdict(int)
 
@@ -118,7 +118,7 @@ class ErrorHandler:
         self.logger = logger or get_logger(__name__)
         self.enable_stats = enable_stats
         self.stats = ErrorStats(window_minutes=stats_window_minutes) if enable_stats else None
-        self.fallback_registry: Dict[str, Callable] = {}
+        self.fallback_registry: Dict[str, Callable[[], Any]] = {}
 
     def handle_error(
         self,
@@ -156,13 +156,13 @@ class ErrorHandler:
             self.stats.add_error(error, full_context)
 
         # Determine severity and category
-        if isinstance(error, EnvyBaseException):
+        if isinstance(error, EnvyBaseError):
             severity = error.severity
             category = error.category
             error_info = error.to_dict()
         else:
             severity = get_error_severity(error)
-            category = self._categorize_error(error)
+            category = self._categorize_error(error) or ErrorCategory.PERMANENT
             error_info = {
                 "error_type": type(error).__name__,
                 "message": str(error),
@@ -253,7 +253,7 @@ class ErrorHandler:
         """Register a fallback function for a specific operation."""
         self.fallback_registry[operation_name] = fallback_func
 
-    def get_fallback(self, operation_name: str) -> Optional[Callable]:
+    def get_fallback(self, operation_name: str) -> Optional[Callable[[], Any]]:
         """Get the registered fallback function for an operation."""
         return self.fallback_registry.get(operation_name)
 
@@ -343,7 +343,7 @@ def handle_errors(
                 fallback_result = None
                 if fallback:
                     if asyncio.iscoroutinefunction(fallback):
-                        def fallback_result():
+                        def fallback_result() -> Any:
                             return asyncio.create_task(fallback())
                     else:
                         fallback_result = fallback
@@ -377,7 +377,7 @@ def handle_api_error(
     if endpoint:
         context["endpoint"] = endpoint
 
-    def fallback_action():
+    def fallback_action() -> Any:
         return fallback_data if fallback_data is not None else None
 
     return get_error_handler().handle_error(
@@ -401,7 +401,7 @@ def handle_data_processing_error(
         "processing_operation": operation
     }
 
-    def fallback_action():
+    def fallback_action() -> Any:
         return fallback_result if fallback_result is not None else None
 
     return get_error_handler().handle_error(

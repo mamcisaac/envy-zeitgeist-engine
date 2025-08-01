@@ -4,6 +4,7 @@ import json
 import logging
 import tempfile
 from pathlib import Path
+from typing import Generator
 
 import pytest
 
@@ -67,7 +68,7 @@ class TestStructuredFormatter:
                 lno=42,
                 msg="Error occurred",
                 args=(),
-                exc_info=True
+                exc_info=None
             )
 
         # Format and parse the JSON
@@ -308,7 +309,7 @@ class TestUtilityFunctions:
 
 
 @pytest.fixture
-def clean_loggers():
+def clean_loggers() -> Generator[None, None, None]:
     """Clean up loggers after tests."""
     yield
 

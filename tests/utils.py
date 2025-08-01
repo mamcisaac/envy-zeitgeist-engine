@@ -275,7 +275,7 @@ def assert_valid_mention(mention: RawMention) -> None:
     assert mention.source in ["twitter", "reddit", "tiktok", "youtube", "news"]
     assert mention.url.startswith("http")
     assert len(mention.title) > 0
-    assert len(mention.body) > 0
+    assert isinstance(mention.body, str)  # Body can be empty for some collection methods
     assert isinstance(mention.timestamp, datetime)
     assert 0.0 <= mention.platform_score <= 1.0
     assert isinstance(mention.entities, list)

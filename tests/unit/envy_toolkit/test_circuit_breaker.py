@@ -29,7 +29,7 @@ class TestCircuitBreakerConfig:
         config = CircuitBreakerConfig()
         assert config.failure_threshold == 5
         assert config.timeout_duration == 60
-        assert config.expected_exception == Exception
+        assert config.expected_exception is Exception
         assert config.success_threshold == 3
 
     def test_custom_config(self) -> None:
@@ -42,7 +42,7 @@ class TestCircuitBreakerConfig:
         )
         assert config.failure_threshold == 3
         assert config.timeout_duration == 30
-        assert config.expected_exception == ConnectionError
+        assert config.expected_exception is ConnectionError
         assert config.success_threshold == 2
 
 
@@ -182,7 +182,7 @@ class TestCircuitBreaker:
 
         result = await breaker.call(test_func)
         assert result == "test"
-        assert breaker.state == CircuitState.HALF_OPEN
+        assert breaker.state == CircuitState.HALF_OPEN  # type: ignore[comparison-overlap]
 
     @pytest.mark.asyncio
     async def test_half_open_success_closes_circuit(self) -> None:
@@ -213,10 +213,10 @@ class TestCircuitBreaker:
         # First successful call - should be half-open
         result1 = await breaker.call(successful_func)
         assert result1 == "success"
-        assert breaker.state == CircuitState.HALF_OPEN
+        assert breaker.state == CircuitState.HALF_OPEN  # type: ignore[comparison-overlap]
 
         # Second successful call - should close the circuit
-        result2 = await breaker.call(successful_func)
+        result2 = await breaker.call(successful_func)  # type: ignore[unreachable]
         assert result2 == "success"
         assert breaker.state == CircuitState.CLOSED
         assert breaker.stats.failure_count == 0  # Reset on close
@@ -242,10 +242,10 @@ class TestCircuitBreaker:
         # Wait for timeout and make a successful call to go half-open
         await asyncio.sleep(1.1)
         await breaker.call(successful_func)
-        assert breaker.state == CircuitState.HALF_OPEN
+        assert breaker.state == CircuitState.HALF_OPEN  # type: ignore[comparison-overlap]
 
         # Now fail - should go back to open
-        with pytest.raises(ConnectionError):
+        with pytest.raises(ConnectionError):  # type: ignore[unreachable]
             await breaker.call(failing_func)
 
         assert breaker.state == CircuitState.OPEN
@@ -330,8 +330,8 @@ class TestCircuitBreaker:
         # Manual reset
         await breaker.reset()
 
-        assert breaker.state == CircuitState.CLOSED
-        assert breaker.stats.failure_count == 0
+        assert breaker.state == CircuitState.CLOSED  # type: ignore[comparison-overlap]
+        assert breaker.stats.failure_count == 0  # type: ignore[unreachable]
         assert breaker.stats.success_count == 0
 
     @pytest.mark.asyncio
@@ -344,8 +344,8 @@ class TestCircuitBreaker:
         # Force open
         await breaker.force_open()
 
-        assert breaker.state == CircuitState.OPEN
-        assert breaker.stats.last_failure_time is not None
+        assert breaker.state == CircuitState.OPEN  # type: ignore[comparison-overlap]
+        assert breaker.stats.last_failure_time is not None  # type: ignore[unreachable]
 
     @pytest.mark.asyncio
     async def test_protected_decorator(self) -> None:
@@ -453,14 +453,14 @@ class TestCircuitBreakerRegistry:
         # Reset all
         await registry.reset_all()
 
-        assert breaker1.state == CircuitState.CLOSED
-        assert breaker2.state == CircuitState.CLOSED
+        assert breaker1.state == CircuitState.CLOSED  # type: ignore[comparison-overlap]
+        assert breaker2.state == CircuitState.CLOSED  # type: ignore[unreachable]
 
     def test_list_breakers(self) -> None:
         """Test listing all breaker names."""
         registry = CircuitBreakerRegistry()
 
-        async def setup():
+        async def setup() -> None:
             await registry.get_or_create(name="service1")
             await registry.get_or_create(name="service2")
 
@@ -594,7 +594,7 @@ class TestEdgeCases:
 
         result = await breaker.call(test_func)
         assert result == "test"
-        assert breaker.state == CircuitState.HALF_OPEN
+        assert breaker.state == CircuitState.HALF_OPEN  # type: ignore[comparison-overlap]
 
     @pytest.mark.asyncio
     async def test_function_that_returns_none(self) -> None:

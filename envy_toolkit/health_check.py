@@ -16,7 +16,7 @@ import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 
 import aiohttp
 import psutil
@@ -68,7 +68,7 @@ class HealthChecker:
     def __init__(self) -> None:
         self.logger = get_logger(__name__)
         self.start_time = time.time()
-        self.component_checkers: Dict[str, callable] = {}
+        self.component_checkers: Dict[str, Callable[[], Union[ComponentHealth, Awaitable[ComponentHealth]]]] = {}
 
         # Register default component checkers
         self._register_default_checkers()
@@ -86,7 +86,7 @@ class HealthChecker:
     def register_component_checker(
         self,
         name: str,
-        checker_func: callable
+        checker_func: Callable[[], Union[ComponentHealth, Awaitable[ComponentHealth]]]
     ) -> None:
         """
         Register a custom component health checker.
@@ -194,13 +194,17 @@ class HealthChecker:
     async def _run_component_check(
         self,
         component_name: str,
-        checker_func: callable
+        checker_func: Callable[[], Union[ComponentHealth, Awaitable[ComponentHealth]]]
     ) -> ComponentHealth:
         """Run a single component health check with timing and error handling."""
         start_time = time.time()
 
         try:
-            result = await checker_func()
+            result_or_coro = checker_func()
+            if asyncio.iscoroutine(result_or_coro):
+                result = await result_or_coro
+            else:
+                result = result_or_coro
 
             # Ensure result is ComponentHealth
             if isinstance(result, ComponentHealth):
@@ -279,9 +283,11 @@ class HealthChecker:
                 start_time = time.time()
 
                 # Add API key if available
-                headers = {}
-                if api_name == "NewsAPI" and os.getenv("NEWS_API_KEY"):
-                    headers["X-API-Key"] = os.getenv("NEWS_API_KEY")
+                headers: Dict[str, str] = {}
+                if api_name == "NewsAPI":
+                    api_key = os.getenv("NEWS_API_KEY")
+                    if api_key:
+                        headers["X-API-Key"] = api_key
 
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as response:
@@ -467,7 +473,8 @@ class HealthChecker:
         for name, histogram in histograms.items():
             if metric_name in name:
                 stats = histogram.get("statistics", {})
-                return stats.get("mean")
+                mean_value = stats.get("mean")
+                return float(mean_value) if mean_value is not None else None
         return None
 
     def _calculate_success_rate(self, counters: Dict[str, Any]) -> Optional[float]:

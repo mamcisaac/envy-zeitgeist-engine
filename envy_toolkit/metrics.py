@@ -20,7 +20,17 @@ from collections import deque
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 from .logging_config import get_logger
 
@@ -48,7 +58,7 @@ class Counter:
     def __init__(self, name: str, description: str = "") -> None:
         self.name = name
         self.description = description
-        self._value = 0
+        self._value: Union[int, float] = 0
         self._lock = Lock()
 
     def increment(self, value: Union[int, float] = 1) -> None:
@@ -82,7 +92,7 @@ class Gauge:
     def __init__(self, name: str, description: str = "") -> None:
         self.name = name
         self.description = description
-        self._value = 0
+        self._value: Union[int, float] = 0
         self._lock = Lock()
 
     def set(self, value: Union[int, float]) -> None:
@@ -129,7 +139,7 @@ class Histogram:
         self.description = description
         self.max_samples = max_samples
         self.time_window_minutes = time_window_minutes
-        self._samples: deque = deque(maxlen=max_samples)
+        self._samples: deque[MetricValue] = deque(maxlen=max_samples)
         self._lock = Lock()
 
     def observe(self, value: Union[int, float]) -> None:
@@ -173,7 +183,7 @@ class Histogram:
                 "std_dev": statistics.stdev(values) if len(values) > 1 else 0
             }
 
-    def get_percentiles(self, percentiles: List[float] = None) -> Dict[str, float]:
+    def get_percentiles(self, percentiles: Optional[List[float]] = None) -> Dict[str, float]:
         """Get percentile values from the histogram."""
         if percentiles is None:
             percentiles = [50, 90, 95, 99]
@@ -328,7 +338,7 @@ class MetricsCollector:
         histogram.observe(value)
 
     @contextmanager
-    def time_operation(self, operation_name: str):
+    def time_operation(self, operation_name: str) -> Generator[None, None, None]:
         """Context manager for timing operations."""
         histogram = self.histogram(f"{operation_name}_duration", f"Duration of {operation_name} operations")
         self.increment_counter(f"{operation_name}_attempts")
@@ -345,7 +355,7 @@ class MetricsCollector:
             self.gauge("active_operations").decrement()
 
     @asynccontextmanager
-    async def time_async_operation(self, operation_name: str):
+    async def time_async_operation(self, operation_name: str) -> AsyncGenerator[None, None]:
         """Async context manager for timing operations."""
         histogram = self.histogram(f"{operation_name}_duration", f"Duration of {operation_name} operations")
         self.increment_counter(f"{operation_name}_attempts")

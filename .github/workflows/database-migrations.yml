@@ -1,0 +1,291 @@
+name: Database Migrations
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'supabase/migrations/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'supabase/migrations/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      dry_run:
+        description: 'Run migrations in dry-run mode'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  validate-migrations:
+    name: Validate Migration Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install asyncpg loguru
+
+      - name: Validate SQL syntax
+        run: |
+          for file in supabase/migrations/*.sql; do
+            if [ -f "$file" ]; then
+              echo "Validating $file..."
+              # Basic SQL syntax check (can be enhanced with pg_validate or similar)
+              if ! grep -q ";" "$file"; then
+                echo "Warning: $file may not contain complete SQL statements"
+              fi
+            fi
+          done
+
+      - name: Check migration file naming
+        run: |
+          cd supabase/migrations
+          for file in *.sql; do
+            if [ -f "$file" ] && [[ ! "$file" =~ ^[0-9]{3}_[a-z_]+\.sql$ ]]; then
+              echo "Error: $file does not follow naming convention (XXX_name.sql)"
+              exit 1
+            fi
+          done
+
+      - name: Dry run migrations
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          if [ -n "$DATABASE_URL" ]; then
+            cd supabase/migrations
+            python run_migrations.py --dry-run
+          else
+            echo "Skipping dry run - no DATABASE_URL provided"
+          fi
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: validate-migrations
+    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install asyncpg loguru
+
+      - name: Run migrations on staging
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          MIGRATION_LOCK_TIMEOUT: 600
+        run: |
+          cd supabase/migrations
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            python run_migrations.py --dry-run
+          else
+            python run_migrations.py
+          fi
+
+      - name: Verify migrations
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          cd supabase/migrations
+          python run_migrations.py --verify
+
+      - name: Create deployment summary
+        run: |
+          cd supabase/migrations
+          python run_migrations.py --status > migration_status.txt
+          echo "## Migration Status" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat migration_status.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: validate-migrations
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install asyncpg loguru
+
+      - name: Pre-deployment backup check
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          echo "⚠️ Production deployment requires manual backup verification"
+          echo "Ensure database backup is recent and tested before proceeding"
+
+      - name: Run migrations on production
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          MIGRATION_LOCK_TIMEOUT: 900  # 15 minutes for production
+        run: |
+          cd supabase/migrations
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            python run_migrations.py --dry-run
+          else
+            echo "Running production migrations..."
+            python run_migrations.py
+          fi
+
+      - name: Verify production migrations
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          cd supabase/migrations
+          python run_migrations.py --verify
+
+      - name: Run post-migration health checks
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          cd supabase/migrations
+          python -c "
+import asyncio
+import asyncpg
+import os
+
+async def health_check():
+    conn = await asyncpg.connect(os.getenv('DATABASE_URL'))
+    try:
+        # Test basic connectivity
+        result = await conn.fetchval('SELECT 1')
+        print('✅ Database connectivity: OK')
+        
+        # Test trending_topics table
+        count = await conn.fetchval('SELECT COUNT(*) FROM trending_topics')
+        print(f'✅ Trending topics table: {count} records')
+        
+        # Test materialized views
+        try:
+            mv_count = await conn.fetchval('SELECT COUNT(*) FROM mv_trending_topics_summary')
+            print(f'✅ Materialized view: {mv_count} records')
+        except:
+            print('⚠️ Materialized view not available')
+        
+        # Test indexes
+        indexes = await conn.fetch(\"\"\"
+            SELECT indexname FROM pg_indexes 
+            WHERE tablename IN ('trending_topics', 'raw_mentions')
+            AND indexname LIKE 'idx_%'
+        \"\"\")
+        print(f'✅ Custom indexes: {len(indexes)} found')
+        
+        print('🎉 Health check passed!')
+        
+    finally:
+        await conn.close()
+
+asyncio.run(health_check())
+          "
+
+      - name: Create production deployment summary
+        run: |
+          cd supabase/migrations
+          python run_migrations.py --status > migration_status.txt
+          echo "## 🚀 Production Migration Completed" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat migration_status.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "✅ Production database migrations completed successfully"
+          echo "All health checks passed"
+
+      - name: Notify deployment failure
+        if: failure()
+        run: |
+          echo "❌ Production deployment failed"
+          echo "Manual intervention may be required"
+          exit 1
+
+  scheduled-maintenance:
+    name: Scheduled Database Maintenance
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install asyncpg loguru
+
+      - name: Refresh materialized views
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          python -c "
+import asyncio
+import asyncpg
+import os
+
+async def refresh_views():
+    conn = await asyncpg.connect(os.getenv('DATABASE_URL'))
+    try:
+        # Refresh all materialized views
+        await conn.execute('SELECT refresh_all_materialized_views()')
+        print('✅ All materialized views refreshed')
+        
+        # Run table maintenance
+        await conn.execute('SELECT analyze_trending_tables()')
+        print('✅ Table statistics updated')
+        
+    finally:
+        await conn.close()
+
+asyncio.run(refresh_views())
+          "
+
+# Schedule for nightly maintenance (disabled by default)
+# Uncomment the following lines and add this trigger to run nightly maintenance:
+# on:
+#   schedule:
+#     - cron: '0 2 * * *'  # Run at 2 AM UTC daily

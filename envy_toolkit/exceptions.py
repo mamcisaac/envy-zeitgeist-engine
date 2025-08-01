@@ -29,7 +29,7 @@ class ErrorCategory(Enum):
     NETWORK = "network"  # Network connectivity errors
 
 
-class EnvyBaseException(Exception):
+class EnvyBaseError(Exception):
     """
     Base exception class for all Envy Zeitgeist Engine errors.
 
@@ -90,7 +90,7 @@ class EnvyBaseException(Exception):
         }
 
 
-class DataCollectionError(EnvyBaseException):
+class DataCollectionError(EnvyBaseError):
     """
     Raised when data collection operations fail.
 
@@ -120,7 +120,7 @@ class DataCollectionError(EnvyBaseException):
         )
 
 
-class ValidationError(EnvyBaseException):
+class ValidationError(EnvyBaseError):
     """
     Raised when data validation fails.
 
@@ -154,7 +154,7 @@ class ValidationError(EnvyBaseException):
         )
 
 
-class ExternalServiceError(EnvyBaseException):
+class ExternalServiceError(EnvyBaseError):
     """
     Raised when external service calls fail.
 
@@ -197,7 +197,7 @@ class ExternalServiceError(EnvyBaseException):
         )
 
 
-class ConfigurationError(EnvyBaseException):
+class ConfigurationError(EnvyBaseError):
     """
     Raised when configuration is invalid or missing.
 
@@ -228,7 +228,7 @@ class ConfigurationError(EnvyBaseException):
         )
 
 
-class RateLimitError(EnvyBaseException):
+class RateLimitError(EnvyBaseError):
     """
     Raised when rate limits are exceeded.
 
@@ -262,7 +262,7 @@ class RateLimitError(EnvyBaseException):
         )
 
 
-class NetworkError(EnvyBaseException):
+class NetworkError(EnvyBaseError):
     """
     Raised when network operations fail.
 
@@ -292,7 +292,7 @@ class NetworkError(EnvyBaseException):
         )
 
 
-class ProcessingError(EnvyBaseException):
+class ProcessingError(EnvyBaseError):
     """
     Raised when data processing operations fail.
 
@@ -321,7 +321,7 @@ class ProcessingError(EnvyBaseException):
         )
 
 
-class CircuitBreakerOpenError(EnvyBaseException):
+class CircuitBreakerOpenError(EnvyBaseError):
     """
     Raised when a circuit breaker is open.
 
@@ -352,7 +352,7 @@ class CircuitBreakerOpenError(EnvyBaseException):
         )
 
 
-class RetryExhaustedError(EnvyBaseException):
+class RetryExhaustedError(EnvyBaseError):
     """
     Raised when retry attempts are exhausted.
 
@@ -407,7 +407,7 @@ def is_retryable_error(error: Exception) -> bool:
     Returns:
         True if error is retryable, False otherwise
     """
-    if isinstance(error, EnvyBaseException):
+    if isinstance(error, EnvyBaseError):
         return error.is_retryable()
 
     # Check for common retryable exception types
@@ -432,7 +432,7 @@ def get_error_severity(error: Exception) -> ErrorSeverity:
     Returns:
         Error severity level
     """
-    if isinstance(error, EnvyBaseException):
+    if isinstance(error, EnvyBaseError):
         return error.severity
 
     # Default severity based on exception type

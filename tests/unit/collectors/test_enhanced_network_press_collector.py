@@ -285,20 +285,21 @@ class TestEnhancedNetworkPressCollector:
         """Test successful API fetch from Netflix."""
         collector = EnhancedNetworkPressCollector()
 
+        # Mock Netflix API response with reality TV content
         mock_api_response = {
             "results": [
                 {
                     "id": "press-123",
-                    "title": "Love is Blind: New Season Casting Now Open",
-                    "description": "Applications are open for the next season of Love is Blind",
+                    "title": "Love is Blind: New Season Casting Now Open for Reality Dating Show",
+                    "description": "Applications are open for the next season of Love is Blind, the popular reality dating series",
                     "url": "https://netflix.com/press/love-is-blind-casting",
                     "published_date": "2024-01-01T12:00:00Z",
                     "category": "Reality TV"
                 },
                 {
                     "id": "press-456",
-                    "title": "Too Hot to Handle Returns This Summer",
-                    "description": "The dating reality show announces premiere date",
+                    "title": "Too Hot to Handle Reality Show Returns This Summer",
+                    "description": "The popular dating reality show announces premiere date with new twists",
                     "url": "https://netflix.com/press/too-hot-to-handle",
                     "published_date": "2024-01-02T10:00:00Z"
                 }
@@ -307,7 +308,12 @@ class TestEnhancedNetworkPressCollector:
 
         with aioresponses() as mock_response:
             api_url = "https://media.netflix.com/api/v1/press-releases"
-            mock_response.get(api_url, payload=mock_api_response)
+            # Mock with regex pattern to match any parameter combination for Netflix API
+            import re
+            mock_response.get(
+                re.compile(r'https://media\.netflix\.com/api/v1/press-releases\?.*'),
+                payload=mock_api_response
+            )
 
             async with aiohttp.ClientSession() as session:
                 mentions = await collector._fetch_from_api(session, "Netflix", api_url)
@@ -319,6 +325,9 @@ class TestEnhancedNetworkPressCollector:
             assert mention.extras["network"] == "Netflix"
             assert mention.extras["source_type"] == "api"
             assert "api_id" in mention.extras
+            # Should contain reality TV keywords
+            content = (mention.title + " " + mention.body).lower()
+            assert any(keyword in content for keyword in collector.reality_keywords)
 
     async def test_fetch_from_api_non_netflix(self) -> None:
         """Test API fetch for non-Netflix networks."""
@@ -393,11 +402,13 @@ class TestEnhancedNetworkPressCollector:
         """Test entity extraction from text."""
         collector = EnhancedNetworkPressCollector()
 
-        text = "Love Island and Big Brother are reality shows featuring the Kardashian family"
+        text = "love island and big brother are reality shows featuring the kardashian family"
         entities = collector._extract_entities(text)
 
+        # Should extract show names (case-insensitive matching, title case output)
         assert "Love Island" in entities
         assert "Big Brother" in entities
+        # Kardashian should also be extracted as it's in the entity patterns
         assert "Kardashian" in entities
 
     def test_extract_entities_no_matches(self) -> None:

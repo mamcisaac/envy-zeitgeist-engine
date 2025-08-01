@@ -1,6 +1,6 @@
 import asyncio
-from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 import hdbscan
 import numpy as np
@@ -9,8 +9,19 @@ from loguru import logger
 from sklearn.feature_extraction.text import TfidfVectorizer
 from statsmodels.tsa.arima.model import ARIMA
 
+from envy_toolkit.brief_templates import (
+    CustomBriefTemplate,
+    DailyBriefTemplate,
+    EmailBriefTemplate,
+    WeeklyBriefTemplate,
+)
 from envy_toolkit.clients import LLMClient, SupabaseClient
-from envy_toolkit.schema import TrendingTopic
+from envy_toolkit.schema import (
+    BriefConfig,
+    BriefType,
+    GeneratedBrief,
+    TrendingTopic,
+)
 
 
 class ZeitgeistAgent:
@@ -238,6 +249,175 @@ Format as JSON with keys: headline, tl_dr, guests, sample_questions"""
             sample_questions=data.get("sample_questions", []),
             cluster_ids=[m['id'] for m in cluster_mentions[:10]]  # Limit stored IDs
         )
+
+    async def generate_brief(self, config: BriefConfig) -> GeneratedBrief:
+        """Generate a Markdown brief from trending topics.
+
+        Args:
+            config: Brief generation configuration
+
+        Returns:
+            Generated brief with metadata
+        """
+        logger.info(f"Generating {config.brief_type} brief")
+
+        # Calculate date range
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=config.date_range_days)
+
+        # Get trending topics from database for the specified period
+        trending_topics = await self.supabase.get_trending_topics_by_date_range(
+            start_date, end_date, limit=config.max_topics
+        )
+
+        logger.info(f"Found {len(trending_topics)} trending topics for brief generation")
+
+        # Convert to TrendingTopic objects if needed
+        if trending_topics and isinstance(trending_topics[0], dict):
+            trending_topics = [TrendingTopic(**topic) for topic in trending_topics]
+
+        # Select appropriate template
+        template = self._get_template(config)
+
+        # Generate content
+        template_kwargs = {}
+        if config.brief_type == BriefType.DAILY:
+            template_kwargs['date'] = end_date
+        elif config.brief_type == BriefType.WEEKLY:
+            template_kwargs['start_date'] = start_date
+        elif config.brief_type == BriefType.EMAIL:
+            template_kwargs['subject_prefix'] = config.subject_prefix
+
+        content = template.generate(trending_topics, **template_kwargs)
+
+        # Create brief record
+        brief = GeneratedBrief(
+            brief_type=config.brief_type,
+            format=config.format,
+            title=config.title or self._generate_title(config, end_date),
+            content=content,
+            topics_count=len(trending_topics),
+            date_start=start_date,
+            date_end=end_date,
+            config=config.dict(),
+            metadata={
+                "generated_by": "zeitgeist_agent",
+                "template_version": "1.0",
+                "topics_analyzed": len(trending_topics)
+            }
+        )
+
+        logger.info(f"Generated {config.brief_type} brief with {len(trending_topics)} topics")
+        return brief
+
+    def _get_template(self, config: BriefConfig):
+        """Get appropriate template based on configuration."""
+        if config.brief_type == BriefType.DAILY:
+            return DailyBriefTemplate()
+        elif config.brief_type == BriefType.WEEKLY:
+            return WeeklyBriefTemplate()
+        elif config.brief_type == BriefType.EMAIL:
+            return EmailBriefTemplate()
+        elif config.brief_type == BriefType.CUSTOM:
+            return CustomBriefTemplate(config.dict())
+        else:
+            raise ValueError(f"Unsupported brief type: {config.brief_type}")
+
+    def _generate_title(self, config: BriefConfig, date: datetime) -> str:
+        """Generate appropriate title for brief."""
+        if config.title:
+            return config.title
+
+        if config.brief_type == BriefType.DAILY:
+            return f"Daily Zeitgeist Brief - {date.strftime('%B %d, %Y')}"
+        elif config.brief_type == BriefType.WEEKLY:
+            week_start = date - timedelta(days=date.weekday())
+            week_end = week_start + timedelta(days=6)
+            return f"Weekly Zeitgeist Summary - {week_start.strftime('%b %d')} to {week_end.strftime('%b %d, %Y')}"
+        elif config.brief_type == BriefType.EMAIL:
+            return f"{config.subject_prefix}: {date.strftime('%B %d, %Y')}"
+        else:
+            return f"Zeitgeist Brief - {date.strftime('%B %d, %Y')}"
+
+    async def generate_daily_brief(self, date: Optional[datetime] = None,
+                                 max_topics: int = 10) -> GeneratedBrief:
+        """Generate a daily brief for the specified date.
+
+        Args:
+            date: Date for the brief (defaults to today)
+            max_topics: Maximum number of topics to include
+
+        Returns:
+            Generated daily brief
+        """
+        config = BriefConfig(
+            brief_type=BriefType.DAILY,
+            max_topics=max_topics,
+            date_range_days=1
+        )
+
+        return await self.generate_brief(config)
+
+    async def generate_weekly_brief(self, week_start: Optional[datetime] = None,
+                                  max_topics: int = 20) -> GeneratedBrief:
+        """Generate a weekly brief for the specified week.
+
+        Args:
+            week_start: Start of the week (defaults to current week Monday)
+            max_topics: Maximum number of topics to include
+
+        Returns:
+            Generated weekly brief
+        """
+        config = BriefConfig(
+            brief_type=BriefType.WEEKLY,
+            max_topics=max_topics,
+            date_range_days=7
+        )
+
+        return await self.generate_brief(config)
+
+    async def generate_email_brief(self, subject_prefix: str = "Daily Zeitgeist",
+                                 max_topics: int = 6) -> GeneratedBrief:
+        """Generate an email-ready brief.
+
+        Args:
+            subject_prefix: Prefix for email subject line
+            max_topics: Maximum number of topics to include
+
+        Returns:
+            Generated email brief
+        """
+        config = BriefConfig(
+            brief_type=BriefType.EMAIL,
+            max_topics=max_topics,
+            subject_prefix=subject_prefix,
+            sections=["summary", "trending", "interviews"]
+        )
+
+        return await self.generate_brief(config)
+
+    async def save_brief(self, brief: GeneratedBrief) -> int:
+        """Save generated brief to database.
+
+        Args:
+            brief: Generated brief to save
+
+        Returns:
+            Brief ID
+        """
+        # Note: This would require extending the SupabaseClient with brief storage methods
+        logger.info(f"Saving {brief.brief_type} brief to database")
+
+        brief_data = brief.dict()
+        # Remove None ID for insertion
+        if brief_data.get('id') is None:
+            brief_data.pop('id', None)
+
+        # In a real implementation, this would call supabase.insert_brief()
+        # For now, we'll just log and return a mock ID
+        logger.info(f"Brief saved with title: {brief.title}")
+        return 1  # Mock ID
 
 
 async def main() -> None:

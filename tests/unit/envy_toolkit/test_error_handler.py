@@ -1,6 +1,7 @@
 """Tests for error handler module."""
 
 import logging
+from typing import Any, Generator, List
 from unittest.mock import Mock
 
 import pytest
@@ -173,7 +174,7 @@ class TestErrorHandler:
         """Test fallback registration and retrieval."""
         handler = ErrorHandler(enable_stats=False)
 
-        def test_fallback():
+        def test_fallback() -> str:
             return "fallback_result"
 
         handler.register_fallback("test_operation", test_fallback)
@@ -228,7 +229,7 @@ class TestErrorHandlerDecorator:
     def test_sync_function_decoration(self) -> None:
         """Test decorating synchronous functions."""
         @handle_errors(operation_name="test_sync", suppress_reraise=True)
-        def test_function():
+        def test_function() -> None:
             raise ValueError("Test error")
 
         # Should not raise due to suppress_reraise
@@ -237,7 +238,7 @@ class TestErrorHandlerDecorator:
 
     def test_sync_function_with_fallback(self) -> None:
         """Test sync function with fallback."""
-        def fallback():
+        def fallback() -> str:
             return "fallback_result"
 
         @handle_errors(
@@ -245,7 +246,7 @@ class TestErrorHandlerDecorator:
             fallback=fallback,
             suppress_reraise=True
         )
-        def test_function():
+        def test_function() -> None:
             raise ValueError("Test error")
 
         result = test_function()
@@ -255,7 +256,7 @@ class TestErrorHandlerDecorator:
     async def test_async_function_decoration(self) -> None:
         """Test decorating asynchronous functions."""
         @handle_errors(operation_name="test_async", suppress_reraise=True)
-        async def test_async_function():
+        async def test_async_function() -> Any:
             raise ValueError("Test error")
 
         result = await test_async_function()
@@ -264,7 +265,7 @@ class TestErrorHandlerDecorator:
     @pytest.mark.asyncio
     async def test_async_function_with_fallback(self) -> None:
         """Test async function with async fallback."""
-        async def async_fallback():
+        async def async_fallback() -> str:
             return "async_fallback_result"
 
         @handle_errors(
@@ -272,7 +273,7 @@ class TestErrorHandlerDecorator:
             fallback=async_fallback,
             suppress_reraise=True
         )
-        async def test_async_function():
+        async def test_async_function() -> Any:
             raise ValueError("Test error")
 
         result = await test_async_function()
@@ -328,7 +329,7 @@ class TestConvenienceFunctions:
     def test_handle_data_processing_error_with_fallback(self) -> None:
         """Test data processing error with fallback."""
         error = ValueError("Processing failed")
-        fallback_result = []
+        fallback_result: List[Any] = []
 
         result = handle_data_processing_error(
             error, "json", "parsing", fallback_result
@@ -337,7 +338,7 @@ class TestConvenienceFunctions:
 
 
 @pytest.fixture(autouse=True)
-def clean_global_handler():
+def clean_global_handler() -> Generator[None, None, None]:
     """Clean up global handler after each test."""
     yield
 

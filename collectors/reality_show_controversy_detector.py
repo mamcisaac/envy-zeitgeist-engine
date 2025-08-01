@@ -370,7 +370,9 @@ class RealityShowControversyDetector(CollectorMixin):
             shares = 50
             age_hours = 2.0
 
-            platform_score = (likes + comments + shares) / max(age_hours, 1)
+            # Normalize platform score to be between 0 and 1
+            raw_score = (likes + comments + shares) / max(age_hours, 1)
+            platform_score = min(raw_score / 1000.0, 1.0)  # Normalize and cap at 1.0
 
             mention = self.create_mention(
                 id=hashlib.sha256(simulated_url.encode()).hexdigest(),
@@ -417,7 +419,7 @@ class RealityShowControversyDetector(CollectorMixin):
             return "relationship_scandal"
         elif any(word in keyword_str for word in ["leaked", "exposed", "caught"]):
             return "exposure_scandal"
-        elif any(word in keyword_str for word in ["investigation", "production", "shut down"]):
+        elif any(word in keyword_str for word in ["investigation", "production", "shut down", "halted"]):
             return "production_issue"
         else:
             return "general_controversy"

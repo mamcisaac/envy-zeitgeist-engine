@@ -1,0 +1,11 @@
+# Dependencies for database migrations
+asyncpg>=0.28.0
+loguru>=0.7.0
+python-dotenv>=1.0.0
+
+# Optional: for advanced PostgreSQL features
+psycopg2-binary>=2.9.0
+
+# For testing and validation
+pytest>=7.0.0
+pytest-asyncio>=0.21.0

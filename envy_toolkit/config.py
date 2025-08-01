@@ -7,7 +7,7 @@ timeout, retry, rate limiting, and circuit breaker settings.
 
 import os
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Type
+from typing import Any, Dict, Optional, Type
 
 from loguru import logger
 
@@ -345,7 +345,7 @@ class ConfigManager:
         self._configs[config.name] = config
         logger.info(f"Registered configuration for service: {config.name}")
 
-    def update_config(self, service_name: str, **kwargs) -> None:
+    def update_config(self, service_name: str, **kwargs: Any) -> None:
         """Update configuration for a service.
 
         Args:

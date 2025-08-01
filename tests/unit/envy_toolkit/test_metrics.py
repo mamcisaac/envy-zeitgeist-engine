@@ -3,6 +3,7 @@
 import asyncio
 import json
 import time
+from typing import Generator
 
 import pytest
 
@@ -442,7 +443,7 @@ class TestMetricsDecorator:
         set_metrics_collector(collector)
 
         @collect_metrics(operation_name="test_sync")
-        def test_function():
+        def test_function() -> str:
             time.sleep(0.01)
             return "result"
 
@@ -464,7 +465,7 @@ class TestMetricsDecorator:
         set_metrics_collector(collector)
 
         @collect_metrics(operation_name="test_sync_error")
-        def test_function():
+        def test_function() -> None:
             raise ValueError("Test error")
 
         with pytest.raises(ValueError):
@@ -486,7 +487,7 @@ class TestMetricsDecorator:
         set_metrics_collector(collector)
 
         @collect_metrics(operation_name="test_async")
-        async def test_async_function():
+        async def test_async_function() -> str:
             await asyncio.sleep(0.01)
             return "async_result"
 
@@ -525,7 +526,7 @@ class TestGlobalMetricsCollector:
 
 
 @pytest.fixture(autouse=True)
-def clean_global_collector():
+def clean_global_collector() -> Generator[None, None, None]:
     """Clean up global collector after each test."""
     yield
 

@@ -280,7 +280,7 @@ class TestRateLimiterRegistry:
         """Test listing all limiter names."""
         registry = RateLimiterRegistry()
 
-        async def setup():
+        async def setup() -> None:
             await registry.get_or_create(name="service1", requests_per_second=1.0)
             await registry.get_or_create(name="service2", requests_per_second=2.0)
 

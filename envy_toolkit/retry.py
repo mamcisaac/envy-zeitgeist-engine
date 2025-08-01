@@ -38,7 +38,7 @@ class RetryConfig:
     retryable_exceptions: tuple[Type[Exception], ...] = (Exception,)
 
 
-class RetryExhausted(Exception):
+class RetryExhaustedError(Exception):
     """Raised when all retry attempts have been exhausted."""
 
     def __init__(self, attempts: int, last_exception: Exception) -> None:
@@ -116,7 +116,7 @@ def retry_sync(config: RetryConfig) -> Callable[[F], F]:
                             f"Retry exhausted for {func.__name__} after "
                             f"{config.max_attempts} attempts. Last error: {e}"
                         )
-                        raise RetryExhausted(config.max_attempts, e)
+                        raise RetryExhaustedError(config.max_attempts, e)
 
                     # Calculate and apply delay
                     delay = calculate_delay(
@@ -179,7 +179,7 @@ def retry_async(config: RetryConfig) -> Callable[[Callable[..., Awaitable[Any]]]
                             f"Retry exhausted for {func.__name__} after "
                             f"{config.max_attempts} attempts. Last error: {e}"
                         )
-                        raise RetryExhausted(config.max_attempts, e)
+                        raise RetryExhaustedError(config.max_attempts, e)
 
                     # Calculate and apply delay
                     delay = calculate_delay(

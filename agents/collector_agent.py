@@ -97,7 +97,6 @@ class CollectorAgent:
             unique_mentions = self.deduper.filter_duplicates(
                 [m.model_dump() for m in valid_mentions]
             )
-            deduplication_rate = len(unique_mentions) / len(valid_mentions) if valid_mentions else 0
             duplicates_removed = len(valid_mentions) - len(unique_mentions)
             with LogContext(unique_mentions_count=len(unique_mentions), duplicates_removed=duplicates_removed):
                 logger.info(f"After deduplication: {len(unique_mentions)} unique mentions ({duplicates_removed} duplicates removed)")

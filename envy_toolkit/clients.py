@@ -149,6 +149,17 @@ class SupabaseClient:
     async def insert_trending_topic(self, topic: Dict[str, Any]) -> None:
         self.client.table("trending_topics").insert(topic).execute()
 
+    async def get_trending_topics_by_date_range(self, start_date, end_date, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get trending topics within a date range."""
+        response = self.client.table("trending_topics")\
+            .select("*")\
+            .gte("created_at", start_date.isoformat())\
+            .lte("created_at", end_date.isoformat())\
+            .order("score", desc=True)\
+            .limit(limit)\
+            .execute()
+        return response.data if isinstance(response.data, list) else []
+
 
 class PerplexityClient:
     """Lightweight Perplexity API wrapper for context enrichment"""

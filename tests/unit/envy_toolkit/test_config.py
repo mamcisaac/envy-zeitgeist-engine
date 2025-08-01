@@ -77,7 +77,7 @@ class TestCircuitBreakerConfig:
         assert config.failure_threshold == 5
         assert config.timeout_duration == 60
         assert config.success_threshold == 3
-        assert config.expected_exception == Exception
+        assert config.expected_exception is Exception
 
     def test_custom_circuit_breaker_config(self) -> None:
         """Test custom circuit breaker configuration."""
@@ -90,7 +90,7 @@ class TestCircuitBreakerConfig:
         assert config.failure_threshold == 3
         assert config.timeout_duration == 30
         assert config.success_threshold == 2
-        assert config.expected_exception == ConnectionError
+        assert config.expected_exception is ConnectionError
 
 
 class TestAPIConfig:

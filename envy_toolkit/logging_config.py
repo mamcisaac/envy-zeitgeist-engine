@@ -185,6 +185,7 @@ def setup_logging(
     logger.handlers.clear()
 
     # Choose formatter
+    formatter: logging.Formatter
     if format_type == "structured":
         formatter = StructuredFormatter()
     elif format_type == "enhanced":

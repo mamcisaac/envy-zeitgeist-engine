@@ -109,7 +109,11 @@ class TestYouTubeEngagementCollector:
                         'commentCount': '500'
                     },
                     'snippet': {
-                        'publishedAt': '2024-01-01T12:00:00Z'
+                        'title': 'Love Island USA Drama Unfolds',
+                        'description': 'Latest drama from Love Island USA house',
+                        'publishedAt': '2024-01-01T12:00:00Z',
+                        'channelTitle': 'Reality TV Network',
+                        'channelId': 'UC123456789'
                     }
                 },
                 {
@@ -120,7 +124,11 @@ class TestYouTubeEngagementCollector:
                         'commentCount': '300'
                     },
                     'snippet': {
-                        'publishedAt': '2024-01-01T15:00:00Z'
+                        'title': 'Big Brother Controversy Explained',
+                        'description': 'Breaking down the latest Big Brother drama',
+                        'publishedAt': '2024-01-01T15:00:00Z',
+                        'channelTitle': 'TV Insider',
+                        'channelId': 'UC987654321'
                     }
                 }
             ]
@@ -222,7 +230,11 @@ class TestYouTubeEngagementCollector:
                         'commentCount': '200'
                     },
                     'snippet': {
-                        'publishedAt': '2024-01-01T10:00:00Z'
+                        'title': 'Bravo Reality Update',
+                        'description': 'Latest from Bravo reality shows',
+                        'publishedAt': '2024-01-01T10:00:00Z',
+                        'channelTitle': 'Bravo',
+                        'channelId': 'UC8aRNrCG3fLQ1i8GBXtCdoA'
                     }
                 }
             ]
@@ -247,7 +259,7 @@ class TestYouTubeEngagementCollector:
         mention = mentions[0]
         assert mention.title == "Bravo Reality Update"
         assert mention.url == "https://youtube.com/watch?v=channel_video_1"
-        assert mention.extras is not None and mention.extras['channel_name'] == "Bravo"
+        assert mention.extras is not None and mention.extras['source_term'] == "Bravo"
 
     @patch.dict('os.environ', {'YOUTUBE_API_KEY': 'test-key'})
     @patch('collectors.youtube_engagement_collector.build')
@@ -344,14 +356,14 @@ class TestYouTubeEngagementCollector:
 
         # Mock the internal methods to control what gets called
         with patch.object(collector, '_search_trending_videos') as mock_search_videos, \
-             patch.object(collector, '_get_channel_videos') as mock_channel_videos:
+             patch.object(collector, '_get_channel_content') as mock_channel_content:
 
             mock_mention = create_test_mention(
                 platform="youtube",
                 title="Test YouTube mention"
             )
             mock_search_videos.return_value = [mock_mention]
-            mock_channel_videos.return_value = []
+            mock_channel_content.return_value = []
 
             mentions = await collector.collect_youtube_engagement_data()
 
@@ -359,7 +371,7 @@ class TestYouTubeEngagementCollector:
             assert mock_search_videos.call_count == len(collector.reality_search_terms)
 
             # Should call channel videos for each channel
-            assert mock_channel_videos.call_count == len(collector.reality_channels)
+            assert mock_channel_content.call_count == len(collector.reality_channels)
 
             # Should return mentions
             assert len(mentions) >= 1

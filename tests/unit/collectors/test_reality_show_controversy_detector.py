@@ -36,6 +36,7 @@ class TestRealityShowControversyDetector:
         assert detector.news_api_key == 'test-news-key'
         self._assert_detector_initialization(detector)
 
+    @patch.dict('os.environ', {}, clear=True)
     def test_init_no_api_keys(self) -> None:
         """Test initialization without API keys."""
         detector = RealityShowControversyDetector()
@@ -121,9 +122,9 @@ class TestRealityShowControversyDetector:
             <channel>
                 <title>Reality Blurb</title>
                 <item>
-                    <title>Real Housewives Star Under Fire for Racist Comments</title>
-                    <link>https://realityblurb.com/housewives-racist-comments</link>
-                    <description>The reality star faces backlash after leaked audio surfaces</description>
+                    <title>Real Housewives Star Under Fire for Racial Slur</title>
+                    <link>https://realityblurb.com/housewives-racial-slur</link>
+                    <description>The reality star faces backlash after racial slur in leaked audio surfaces</description>
                     <pubDate>Mon, 01 Jan 2024 15:30:00 GMT</pubDate>
                     <author>Reality Blogger</author>
                     <category>Real Housewives</category>
@@ -144,8 +145,9 @@ class TestRealityShowControversyDetector:
         </rss>"""
 
         with aioresponses() as mock_response:
-            feed_url = "https://realityblurb.com/feed/"
-            mock_response.get(feed_url, body=mock_rss_content, content_type='application/rss+xml')
+            # Mock all RSS feeds from news_sources
+            for feed_url in detector.news_sources.values():
+                mock_response.get(feed_url, body=mock_rss_content, content_type='application/rss+xml')
 
             async with aiohttp.ClientSession() as session:
                 mentions = await detector._collect_from_reality_blogs(session)
@@ -163,10 +165,10 @@ class TestRealityShowControversyDetector:
             assert any(keyword in content for keyword in detector.controversy_keywords)
 
         # Check specific categorizations
-        racist_mention = next((m for m in mentions if "racist" in m.title.lower()), None)
-        if racist_mention and racist_mention.extras:
-            assert racist_mention.extras["controversy_type"] == "discrimination"
-            assert racist_mention.extras["severity"] == "high"
+        racial_slur_mention = next((m for m in mentions if "racial slur" in m.title.lower()), None)
+        if racial_slur_mention and racial_slur_mention.extras:
+            assert racial_slur_mention.extras["controversy_type"] == "discrimination"
+            assert racial_slur_mention.extras["severity"] == "high"
 
         disqualified_mention = next((m for m in mentions if "disqualified" in m.title.lower()), None)
         if disqualified_mention and disqualified_mention.extras:
@@ -259,12 +261,12 @@ class TestRealityShowControversyDetector:
         }
 
         with aioresponses() as mock_response:
-            # Mock multiple search queries
-            for i in range(15):  # Detector limits to 15 queries
-                mock_response.get(
-                    "https://serpapi.com/search",
-                    payload=mock_search_response
-                )
+            # Mock SerpAPI search with regex pattern to match any query parameters
+            import re
+            mock_response.get(
+                re.compile(r'https://serpapi\.com/search\?.*'),
+                payload=mock_search_response
+            )
 
             async with aiohttp.ClientSession() as session:
                 mentions = await detector._search_for_controversies(session)

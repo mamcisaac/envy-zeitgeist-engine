@@ -358,7 +358,7 @@ class EntertainmentNewsCollector(CollectorMixin):
                         ):
                             # Calculate platform score (simple for scraped content)
                             age_hours = 1.0  # Assume recent
-                            platform_score = 5.0 / age_hours
+                            platform_score = min(5.0 / age_hours, 1.0)  # Cap at 1.0
 
                             # Extract entities
                             entities = self._extract_entities(combined_text)
@@ -404,7 +404,7 @@ class EntertainmentNewsCollector(CollectorMixin):
 
         try:
             # Import serpapi here to avoid dependency issues if not installed
-            from serpapi import GoogleSearch
+            from serpapi.google_search import GoogleSearch
 
             # Search for recent reality TV news
             search_query = f"{search_site} (reality TV OR love island OR big brother OR bachelorette OR real housewives) 2025"
@@ -551,10 +551,14 @@ async def collect(session: Optional[aiohttp.ClientSession] = None) -> List[RawMe
         for source_name, source_config in collector.news_sources.items():
             logger.info(f"Collecting news from {source_name}...")
 
-            source_mentions = await collector._collect_source_data(
-                session, source_name, source_config
-            )
-            all_mentions.extend(source_mentions)
+            try:
+                source_mentions = await collector._collect_source_data(
+                    session, source_name, source_config
+                )
+                all_mentions.extend(source_mentions)
+            except Exception as e:
+                logger.error(f"Error collecting from {source_name}: {e}")
+                continue
 
             # Rate limiting
             await asyncio.sleep(1)

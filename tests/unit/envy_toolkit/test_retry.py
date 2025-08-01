@@ -12,7 +12,7 @@ import pytest
 from envy_toolkit.retry import (
     RetryConfig,
     RetryConfigs,
-    RetryExhausted,
+    RetryExhaustedError,
     calculate_delay,
     retry_async,
     retry_sync,
@@ -106,13 +106,13 @@ class TestCalculateDelay:
         assert delay_base_30 == 9.0
 
 
-class TestRetryExhausted:
-    """Test RetryExhausted exception."""
+class TestRetryExhaustedError:
+    """Test RetryExhaustedError exception."""
 
     def test_retry_exhausted_creation(self) -> None:
-        """Test creating RetryExhausted exception."""
+        """Test creating RetryExhaustedError exception."""
         original_error = ValueError("Original error")
-        retry_error = RetryExhausted(3, original_error)
+        retry_error = RetryExhaustedError(3, original_error)
 
         assert retry_error.attempts == 3
         assert retry_error.last_exception is original_error
@@ -154,7 +154,7 @@ class TestRetrySyncDecorator:
         assert call_count == 3
 
     def test_retry_exhausted_exception(self) -> None:
-        """Test RetryExhausted is raised after max attempts."""
+        """Test RetryExhaustedError is raised after max attempts."""
         call_count = 0
 
         @retry_sync(RetryConfig(max_attempts=2, base_delay=0.01))
@@ -163,7 +163,7 @@ class TestRetrySyncDecorator:
             call_count += 1
             raise ConnectionError("Network error")
 
-        with pytest.raises(RetryExhausted) as exc_info:
+        with pytest.raises(RetryExhaustedError) as exc_info:
             always_failing_func()
 
         assert exc_info.value.attempts == 2
@@ -247,7 +247,7 @@ class TestRetryAsyncDecorator:
 
     @pytest.mark.asyncio
     async def test_retry_exhausted_exception(self) -> None:
-        """Test RetryExhausted is raised after max attempts."""
+        """Test RetryExhaustedError is raised after max attempts."""
         call_count = 0
 
         @retry_async(RetryConfig(max_attempts=2, base_delay=0.01))
@@ -256,7 +256,7 @@ class TestRetryAsyncDecorator:
             call_count += 1
             raise ConnectionError("Network error")
 
-        with pytest.raises(RetryExhausted) as exc_info:
+        with pytest.raises(RetryExhaustedError) as exc_info:
             await always_failing_func()
 
         assert exc_info.value.attempts == 2
@@ -450,7 +450,7 @@ class TestEdgeCases:
             call_count += 1
             raise Exception("Error")
 
-        with pytest.raises(RetryExhausted):
+        with pytest.raises(RetryExhaustedError):
             failing_func()
 
         assert call_count == 1
@@ -488,7 +488,7 @@ class TestEdgeCases:
         async def failing_func() -> str:
             raise ConnectionError("Original error")
 
-        with pytest.raises(RetryExhausted) as exc_info:
+        with pytest.raises(RetryExhaustedError) as exc_info:
             await failing_func()
 
         # The original exception should be preserved

@@ -5,7 +5,7 @@ from envy_toolkit.exceptions import (
     CircuitBreakerOpenError,
     ConfigurationError,
     DataCollectionError,
-    EnvyBaseException,
+    EnvyBaseError,
     ErrorCategory,
     ErrorSeverity,
     ExternalServiceError,
@@ -19,12 +19,12 @@ from envy_toolkit.exceptions import (
 )
 
 
-class TestEnvyBaseException:
+class TestEnvyBaseError:
     """Test base exception class."""
 
     def test_basic_initialization(self) -> None:
         """Test basic exception initialization."""
-        exc = EnvyBaseException("Test error")
+        exc = EnvyBaseError("Test error")
 
         assert str(exc) == "Test error"
         assert exc.message == "Test error"
@@ -40,7 +40,7 @@ class TestEnvyBaseException:
         cause = ValueError("Original error")
         context = {"key": "value", "count": 42}
 
-        exc = EnvyBaseException(
+        exc = EnvyBaseError(
             message="Test error",
             error_code="TEST_ERROR",
             severity=ErrorSeverity.HIGH,
@@ -63,7 +63,7 @@ class TestEnvyBaseException:
         cause = ValueError("Original error")
         context = {"key": "value"}
 
-        exc = EnvyBaseException(
+        exc = EnvyBaseError(
             message="Test error",
             error_code="TEST_ERROR",
             severity=ErrorSeverity.CRITICAL,
@@ -75,7 +75,7 @@ class TestEnvyBaseException:
 
         result = exc.to_dict()
 
-        assert result["error_type"] == "EnvyBaseException"
+        assert result["error_type"] == "EnvyBaseError"
         assert result["message"] == "Test error"
         assert result["error_code"] == "TEST_ERROR"
         assert result["severity"] == "critical"
@@ -87,23 +87,23 @@ class TestEnvyBaseException:
     def test_is_retryable(self) -> None:
         """Test retryable error detection."""
         # Transient errors should be retryable
-        transient_exc = EnvyBaseException("Test", category=ErrorCategory.TRANSIENT)
+        transient_exc = EnvyBaseError("Test", category=ErrorCategory.TRANSIENT)
         assert transient_exc.is_retryable()
 
         # Network errors should be retryable
-        network_exc = EnvyBaseException("Test", category=ErrorCategory.NETWORK)
+        network_exc = EnvyBaseError("Test", category=ErrorCategory.NETWORK)
         assert network_exc.is_retryable()
 
         # Rate limit errors should be retryable
-        rate_limit_exc = EnvyBaseException("Test", category=ErrorCategory.RATE_LIMIT)
+        rate_limit_exc = EnvyBaseError("Test", category=ErrorCategory.RATE_LIMIT)
         assert rate_limit_exc.is_retryable()
 
         # Permanent errors should not be retryable
-        permanent_exc = EnvyBaseException("Test", category=ErrorCategory.PERMANENT)
+        permanent_exc = EnvyBaseError("Test", category=ErrorCategory.PERMANENT)
         assert not permanent_exc.is_retryable()
 
         # Configuration errors should not be retryable
-        config_exc = EnvyBaseException("Test", category=ErrorCategory.CONFIGURATION)
+        config_exc = EnvyBaseError("Test", category=ErrorCategory.CONFIGURATION)
         assert not config_exc.is_retryable()
 
 
@@ -350,7 +350,7 @@ class TestUtilityFunctions:
     def test_is_retryable_error_with_envy_exceptions(self) -> None:
         """Test retryable error detection with Envy exceptions."""
         # Retryable exceptions
-        transient_exc = EnvyBaseException("Test", category=ErrorCategory.TRANSIENT)
+        transient_exc = EnvyBaseError("Test", category=ErrorCategory.TRANSIENT)
         assert is_retryable_error(transient_exc)
 
         network_exc = NetworkError("Connection failed")
@@ -387,7 +387,7 @@ class TestUtilityFunctions:
         medium_exc = ValidationError("Invalid data")
         assert get_error_severity(medium_exc) == ErrorSeverity.MEDIUM
 
-        critical_exc = EnvyBaseException("Test", severity=ErrorSeverity.CRITICAL)
+        critical_exc = EnvyBaseError("Test", severity=ErrorSeverity.CRITICAL)
         assert get_error_severity(critical_exc) == ErrorSeverity.CRITICAL
 
     def test_get_error_severity_with_standard_exceptions(self) -> None:

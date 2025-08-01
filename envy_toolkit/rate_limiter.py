@@ -9,7 +9,7 @@ import asyncio
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from loguru import logger
 
@@ -148,7 +148,7 @@ class RateLimiter:
         await self.acquire()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Async context manager exit."""
         pass
 
@@ -169,7 +169,7 @@ class RateLimiter:
 
         return recent_requests / 60.0
 
-    def get_stats(self) -> Dict[str, any]:
+    def get_stats(self) -> Dict[str, Any]:
         """Get rate limiter statistics.
 
         Returns:
@@ -241,7 +241,7 @@ class RateLimiterRegistry:
         """
         return self._limiters.get(name)
 
-    def get_all_stats(self) -> Dict[str, Dict[str, any]]:
+    def get_all_stats(self) -> Dict[str, Dict[str, Any]]:
         """Get statistics for all rate limiters.
 
         Returns:
@@ -296,7 +296,7 @@ def rate_limited(
     name: str,
     requests_per_second: float,
     burst_size: int = 10,
-):
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator for rate limiting function calls.
 
     Args:
@@ -312,8 +312,8 @@ def rate_limited(
         async def api_call():
             return await external_api()
     """
-    def decorator(func):
-        async def wrapper(*args, **kwargs):
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             limiter = await rate_limiter_registry.get_or_create(
                 name=name,
                 requests_per_second=requests_per_second,

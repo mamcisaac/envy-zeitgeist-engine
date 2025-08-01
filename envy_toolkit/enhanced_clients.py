@@ -18,21 +18,23 @@ import anthropic
 import openai
 import praw
 import tiktoken
-from dotenv import load_dotenv
 from loguru import logger
 
 from supabase import Client, create_client
 
-from .circuit_breaker import CircuitBreakerOpenError, circuit_breaker_registry
+from .circuit_breaker import (
+    CircuitBreaker,
+    CircuitBreakerOpenError,
+    circuit_breaker_registry,
+)
 from .config import get_api_config
+from .enhanced_supabase_client import EnhancedSupabaseClient as _EnhancedSupabaseClient
 from .error_handler import get_error_handler
 from .exceptions import ExternalServiceError, RateLimitError
 from .logging_config import LogContext
 from .metrics import collect_metrics, get_metrics_collector
-from .rate_limiter import rate_limiter_registry
-from .retry import RetryConfigs, RetryExhausted, retry_async
-
-load_dotenv()
+from .rate_limiter import RateLimiter, rate_limiter_registry
+from .retry import RetryConfigs, RetryExhaustedError, retry_async
 
 
 class EnhancedSerpAPIClient:
@@ -45,8 +47,8 @@ class EnhancedSerpAPIClient:
             raise ValueError("SERPAPI_API_KEY not found in environment")
 
         # Initialize rate limiter and circuit breaker
-        self._rate_limiter = None
-        self._circuit_breaker = None
+        self._rate_limiter: Optional[RateLimiter] = None
+        self._circuit_breaker: Optional[CircuitBreaker] = None
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def _ensure_session(self) -> aiohttp.ClientSession:
@@ -62,7 +64,7 @@ class EnhancedSerpAPIClient:
             )
         return self._session
 
-    async def _get_rate_limiter(self):
+    async def _get_rate_limiter(self) -> RateLimiter:
         """Get or create rate limiter for this client."""
         if self._rate_limiter is None:
             self._rate_limiter = await rate_limiter_registry.get_or_create(
@@ -72,7 +74,7 @@ class EnhancedSerpAPIClient:
             )
         return self._rate_limiter
 
-    async def _get_circuit_breaker(self):
+    async def _get_circuit_breaker(self) -> CircuitBreaker:
         """Get or create circuit breaker for this client."""
         if self._circuit_breaker is None:
             self._circuit_breaker = await circuit_breaker_registry.get_or_create(
@@ -102,7 +104,8 @@ class EnhancedSerpAPIClient:
                 )
 
             response.raise_for_status()
-            return await response.json()
+            result: Dict[str, Any] = await response.json()
+            return result
 
     @retry_async(RetryConfigs.HTTP)
     async def _protected_request(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -111,7 +114,8 @@ class EnhancedSerpAPIClient:
         circuit_breaker = await self._get_circuit_breaker()
 
         async with rate_limiter:
-            return await circuit_breaker.call(self._make_request, params)
+            result: Dict[str, Any] = await circuit_breaker.call(self._make_request, params)
+            return result
 
     @collect_metrics(operation_name="serpapi_search")
     async def search(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
@@ -129,7 +133,7 @@ class EnhancedSerpAPIClient:
             results = await self._protected_request(params)
             organic_results = results.get("organic_results", [])
             return organic_results if isinstance(organic_results, list) else []
-        except (RetryExhausted, CircuitBreakerOpenError) as e:
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
             with LogContext(service="serpapi", query=query, operation="search"):
                 get_error_handler().handle_error(
                     error=ExternalServiceError(
@@ -175,7 +179,7 @@ class EnhancedSerpAPIClient:
             results = await self._protected_request(params)
             news_results = results.get("news_results", [])
             return news_results if isinstance(news_results, list) else []
-        except (RetryExhausted, CircuitBreakerOpenError) as e:
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
             with LogContext(service="serpapi", query=query, operation="news_search"):
                 get_error_handler().handle_error(
                     error=ExternalServiceError(
@@ -212,10 +216,10 @@ class EnhancedRedditClient:
         )
 
         # Initialize rate limiter and circuit breaker
-        self._rate_limiter = None
-        self._circuit_breaker = None
+        self._rate_limiter: Optional[RateLimiter] = None
+        self._circuit_breaker: Optional[CircuitBreaker] = None
 
-    async def _get_rate_limiter(self):
+    async def _get_rate_limiter(self) -> RateLimiter:
         """Get or create rate limiter for this client."""
         if self._rate_limiter is None:
             self._rate_limiter = await rate_limiter_registry.get_or_create(
@@ -225,7 +229,7 @@ class EnhancedRedditClient:
             )
         return self._rate_limiter
 
-    async def _get_circuit_breaker(self):
+    async def _get_circuit_breaker(self) -> CircuitBreaker:
         """Get or create circuit breaker for this client."""
         if self._circuit_breaker is None:
             self._circuit_breaker = await circuit_breaker_registry.get_or_create(
@@ -267,10 +271,11 @@ class EnhancedRedditClient:
             circuit_breaker = await self._get_circuit_breaker()
 
             async with rate_limiter:
-                return await circuit_breaker.call(
+                result: List[Dict[str, Any]] = await circuit_breaker.call(
                     self._search_subreddit_impl, subreddit, query, limit
                 )
-        except (RetryExhausted, CircuitBreakerOpenError) as e:
+                return result
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
             logger.error(f"Reddit search failed after retries: {e}")
             return []  # Graceful degradation
         except Exception as e:
@@ -297,12 +302,12 @@ class EnhancedLLMClient:
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
 
         # Initialize rate limiters and circuit breakers
-        self._openai_rate_limiter = None
-        self._anthropic_rate_limiter = None
-        self._openai_circuit_breaker = None
-        self._anthropic_circuit_breaker = None
+        self._openai_rate_limiter: Optional[RateLimiter] = None
+        self._anthropic_rate_limiter: Optional[RateLimiter] = None
+        self._openai_circuit_breaker: Optional[CircuitBreaker] = None
+        self._anthropic_circuit_breaker: Optional[CircuitBreaker] = None
 
-    async def _get_openai_rate_limiter(self):
+    async def _get_openai_rate_limiter(self) -> RateLimiter:
         """Get or create rate limiter for OpenAI."""
         if self._openai_rate_limiter is None:
             self._openai_rate_limiter = await rate_limiter_registry.get_or_create(
@@ -312,7 +317,7 @@ class EnhancedLLMClient:
             )
         return self._openai_rate_limiter
 
-    async def _get_anthropic_rate_limiter(self):
+    async def _get_anthropic_rate_limiter(self) -> RateLimiter:
         """Get or create rate limiter for Anthropic."""
         if self._anthropic_rate_limiter is None:
             self._anthropic_rate_limiter = await rate_limiter_registry.get_or_create(
@@ -322,7 +327,7 @@ class EnhancedLLMClient:
             )
         return self._anthropic_rate_limiter
 
-    async def _get_openai_circuit_breaker(self):
+    async def _get_openai_circuit_breaker(self) -> CircuitBreaker:
         """Get or create circuit breaker for OpenAI."""
         if self._openai_circuit_breaker is None:
             self._openai_circuit_breaker = await circuit_breaker_registry.get_or_create(
@@ -334,7 +339,7 @@ class EnhancedLLMClient:
             )
         return self._openai_circuit_breaker
 
-    async def _get_anthropic_circuit_breaker(self):
+    async def _get_anthropic_circuit_breaker(self) -> CircuitBreaker:
         """Get or create circuit breaker for Anthropic."""
         if self._anthropic_circuit_breaker is None:
             self._anthropic_circuit_breaker = await circuit_breaker_registry.get_or_create(
@@ -366,8 +371,9 @@ class EnhancedLLMClient:
             circuit_breaker = await self._get_openai_circuit_breaker()
 
             async with rate_limiter:
-                return await circuit_breaker.call(self._embed_text_impl, text)
-        except (RetryExhausted, CircuitBreakerOpenError) as e:
+                result: List[float] = await circuit_breaker.call(self._embed_text_impl, text)
+                return result
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
             logger.error(f"Text embedding failed after retries: {e}")
             # Return zero vector as fallback
             return [0.0] * 1536  # Default embedding size
@@ -416,18 +422,20 @@ class EnhancedLLMClient:
                 circuit_breaker = await self._get_anthropic_circuit_breaker()
 
                 async with rate_limiter:
-                    return await circuit_breaker.call(
+                    result: str = await circuit_breaker.call(
                         self._generate_anthropic_impl, prompt, model, max_tokens
                     )
+                    return result
             else:
                 rate_limiter = await self._get_openai_rate_limiter()
                 circuit_breaker = await self._get_openai_circuit_breaker()
 
                 async with rate_limiter:
-                    return await circuit_breaker.call(
+                    openai_result: str = await circuit_breaker.call(
                         self._generate_openai_impl, prompt, model, max_tokens
                     )
-        except (RetryExhausted, CircuitBreakerOpenError) as e:
+                    return openai_result
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
             logger.error(f"Text generation failed after retries: {e}")
             return ""  # Graceful degradation
         except Exception as e:
@@ -459,10 +467,10 @@ class EnhancedSupabaseClient:
         self.client: Client = create_client(url, key)
 
         # Initialize rate limiter and circuit breaker
-        self._rate_limiter = None
-        self._circuit_breaker = None
+        self._rate_limiter: Optional[RateLimiter] = None
+        self._circuit_breaker: Optional[CircuitBreaker] = None
 
-    async def _get_rate_limiter(self):
+    async def _get_rate_limiter(self) -> RateLimiter:
         """Get or create rate limiter for this client."""
         if self._rate_limiter is None:
             self._rate_limiter = await rate_limiter_registry.get_or_create(
@@ -472,7 +480,7 @@ class EnhancedSupabaseClient:
             )
         return self._rate_limiter
 
-    async def _get_circuit_breaker(self):
+    async def _get_circuit_breaker(self) -> CircuitBreaker:
         """Get or create circuit breaker for this client."""
         if self._circuit_breaker is None:
             self._circuit_breaker = await circuit_breaker_registry.get_or_create(
@@ -501,7 +509,7 @@ class EnhancedSupabaseClient:
 
             async with rate_limiter:
                 await circuit_breaker.call(self._insert_mention_impl, mention)
-        except (RetryExhausted, CircuitBreakerOpenError) as e:
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
             logger.error(f"Mention insertion failed after retries: {e}")
             # Don't re-raise for graceful degradation
         except Exception as e:
@@ -536,7 +544,7 @@ class EnhancedSupabaseClient:
                     async with rate_limiter:
                         await circuit_breaker.call(self._bulk_insert_batch, batch)
                     successful_inserts += len(batch)
-                except (RetryExhausted, CircuitBreakerOpenError) as e:
+                except (RetryExhaustedError, CircuitBreakerOpenError) as e:
                     logger.error(f"Batch {i//batch_size + 1} failed after retries: {e}")
                     # Continue with next batch for partial success
                     continue
@@ -571,8 +579,9 @@ class EnhancedSupabaseClient:
             circuit_breaker = await self._get_circuit_breaker()
 
             async with rate_limiter:
-                return await circuit_breaker.call(self._get_recent_mentions_impl, hours)
-        except (RetryExhausted, CircuitBreakerOpenError) as e:
+                result: List[Dict[str, Any]] = await circuit_breaker.call(self._get_recent_mentions_impl, hours)
+                return result
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
             logger.error(f"Get recent mentions failed after retries: {e}")
             return []  # Graceful degradation
         except Exception as e:
@@ -596,7 +605,7 @@ class EnhancedSupabaseClient:
 
             async with rate_limiter:
                 await circuit_breaker.call(self._insert_trending_topic_impl, topic)
-        except (RetryExhausted, CircuitBreakerOpenError) as e:
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
             logger.error(f"Trending topic insertion failed after retries: {e}")
             # Don't re-raise for graceful degradation
         except Exception as e:
@@ -612,8 +621,8 @@ class EnhancedPerplexityClient:
         self.base_url = self.config.base_url if self.config.api_key else None
 
         # Initialize rate limiter and circuit breaker
-        self._rate_limiter = None
-        self._circuit_breaker = None
+        self._rate_limiter: Optional[RateLimiter] = None
+        self._circuit_breaker: Optional[CircuitBreaker] = None
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def _ensure_session(self) -> aiohttp.ClientSession:
@@ -629,7 +638,7 @@ class EnhancedPerplexityClient:
             )
         return self._session
 
-    async def _get_rate_limiter(self):
+    async def _get_rate_limiter(self) -> RateLimiter:
         """Get or create rate limiter for this client."""
         if self._rate_limiter is None:
             self._rate_limiter = await rate_limiter_registry.get_or_create(
@@ -639,7 +648,7 @@ class EnhancedPerplexityClient:
             )
         return self._rate_limiter
 
-    async def _get_circuit_breaker(self):
+    async def _get_circuit_breaker(self) -> CircuitBreaker:
         """Get or create circuit breaker for this client."""
         if self._circuit_breaker is None:
             self._circuit_breaker = await circuit_breaker_registry.get_or_create(
@@ -688,8 +697,9 @@ class EnhancedPerplexityClient:
                 circuit_breaker = await self._get_circuit_breaker()
 
                 async with rate_limiter:
-                    return await circuit_breaker.call(self._ask_perplexity_impl, question)
-            except (RetryExhausted, CircuitBreakerOpenError) as e:
+                    result: str = await circuit_breaker.call(self._ask_perplexity_impl, question)
+                    return result
+            except (RetryExhaustedError, CircuitBreakerOpenError) as e:
                 logger.warning(f"Perplexity API failed, falling back to LLM: {e}")
                 # Fall through to LLM fallback
             except Exception as e:
@@ -715,7 +725,7 @@ class EnhancedPerplexityClient:
 SerpAPIClient = EnhancedSerpAPIClient
 RedditClient = EnhancedRedditClient
 LLMClient = EnhancedLLMClient
-SupabaseClient = EnhancedSupabaseClient
+SupabaseClient = _EnhancedSupabaseClient  # Use the new enhanced client with connection pooling
 PerplexityClient = EnhancedPerplexityClient
 
 

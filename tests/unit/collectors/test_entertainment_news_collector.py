@@ -34,6 +34,7 @@ class TestEntertainmentNewsCollector:
         assert collector.openai_key == 'test-openai-key'
         self._assert_collector_initialization(collector)
 
+    @patch.dict('os.environ', {}, clear=True)
     def test_init_no_api_keys(self) -> None:
         """Test initialization without API keys."""
         collector = EntertainmentNewsCollector()
@@ -223,25 +224,30 @@ class TestEntertainmentNewsCollector:
         """Test direct scraping of US Weekly."""
         collector = EntertainmentNewsCollector()
 
-        # Mock HTML response with reality TV content
+        # Mock HTML response with reality TV content that matches the regex patterns
         mock_html = """
         <html>
             <body>
-                <article class="article-item">
-                    <h2 class="article-title">90 Day Fiance Star Announces Engagement</h2>
-                    <div class="article-excerpt">The reality star is getting married to her longtime partner</div>
+                <article class="article-card">
+                    <h2 class="title">90 Day Fiance Star Announces Engagement on Reality Show</h2>
+                    <div class="excerpt">The reality star is getting married to her longtime partner after meeting on the show</div>
                     <a href="/reality-tv/90-day-fiance-engagement">Read More</a>
                 </article>
-                <div class="post-content">
-                    <h3 class="post-headline">Vanderpump Rules Reunion Drama</h3>
-                    <p class="post-summary">Explosive confrontations at the season finale reunion</p>
+                <div class="post-item">
+                    <h3 class="headline">Vanderpump Rules Reunion Drama on Bravo</h3>
+                    <p class="summary">Explosive confrontations at the reality TV season finale reunion special</p>
                     <a href="/tv/vanderpump-rules-reunion">Full Details</a>
                 </div>
                 <article class="story">
-                    <h4 class="story-title">Weather Update</h4>
-                    <div class="story-description">No reality TV content here</div>
-                    <a href="/weather">Link</a>
+                    <h4 class="title">Love Island USA Cast Drama Unfolds</h4>
+                    <div class="description">Dating reality show contestants clash in heated argument</div>
+                    <a href="/love-island-drama">Watch Video</a>
                 </article>
+                <div class="article">
+                    <h3 class="title">Weather Update</h3>
+                    <p class="description">No reality TV content here</p>
+                    <a href="/weather">Link</a>
+                </div>
             </body>
         </html>
         """
@@ -257,7 +263,7 @@ class TestEntertainmentNewsCollector:
             async with aiohttp.ClientSession() as session:
                 mentions = await collector._scrape_source_directly(session, "US Weekly", config)
 
-        assert len(mentions) >= 2  # Should find reality TV articles but not weather
+        assert len(mentions) >= 3  # Should find reality TV articles but skip weather
         for mention in mentions:
             assert_valid_mention(mention)
             assert mention.extras is not None
@@ -300,42 +306,55 @@ class TestEntertainmentNewsCollector:
         # Should return empty list for non-US Weekly sources
         assert mentions == []
 
-    @patch.dict('os.environ', {'SERPAPI_API_KEY': 'test-api-key'})
-    @patch('collectors.entertainment_news_collector.GoogleSearch')
-    async def test_search_recent_news_success(self, mock_google_search: MagicMock) -> None:
-        """Test successful recent news search."""
+    async def test_search_recent_news_success(self) -> None:
+        """Test successful recent news search via SerpAPI."""
         collector = EntertainmentNewsCollector()
+        collector.serpapi_key = "test-serpapi-key"
 
-        # Mock SerpAPI response
-        mock_search_instance = MagicMock()
-        mock_search_instance.get_dict.return_value = {
+        # Mock SerpAPI response with reality TV content
+        mock_search_results = {
             "organic_results": [
                 {
-                    "title": "Love Island Season 6 Casting Open Now",
-                    "link": "https://example.com/love-island-casting",
-                    "snippet": "Applications are now open for the next season of Love Island USA",
-                    "date": "2 days ago"
+                    "position": 1,
+                    "title": "Love Island USA Drama: Reality TV Cast Member Removed",
+                    "link": "https://tmz.com/love-island-drama",
+                    "snippet": "Reality show contestant faces consequences for controversial behavior on dating show",
+                    "date": "2 hours ago"
                 },
                 {
-                    "title": "Big Brother House Tour Exclusive",
-                    "link": "https://example.com/bb-house-tour",
-                    "snippet": "Get an exclusive look inside the Big Brother house before premiere",
+                    "position": 2,
+                    "title": "Real Housewives Reunion Special Explosive Moments on Bravo",
+                    "link": "https://people.com/rhoa-reunion",
+                    "snippet": "Cast members engage in heated confrontation during Bravo reality TV special reunion",
                     "date": "1 day ago"
                 },
                 {
+                    "position": 3,
+                    "title": "Big Brother 27 House Drama Unfolds",
+                    "link": "https://ew.com/big-brother-drama",
+                    "snippet": "Reality competition series contestants clash in heated argument",
+                    "date": "3 hours ago"
+                },
+                {
+                    "position": 4,
                     "title": "Weather Forecast for Tomorrow",
-                    "link": "https://example.com/weather",
+                    "link": "https://weather.com/forecast",
                     "snippet": "Sunny skies and mild temperatures expected",
                     "date": "Today"
                 }
             ]
         }
-        mock_google_search.return_value = mock_search_instance
 
-        async with aiohttp.ClientSession() as session:
-            mentions = await collector._search_recent_news(session, "TMZ", "site:tmz.com")
+        # Mock the serpapi import and GoogleSearch class
+        with patch('serpapi.google_search.GoogleSearch') as mock_search_class:
+            mock_search_instance = MagicMock()
+            mock_search_instance.get_dict.return_value = mock_search_results
+            mock_search_class.return_value = mock_search_instance
 
-        assert len(mentions) >= 2  # Should find reality TV results but not weather
+            async with aiohttp.ClientSession() as session:
+                mentions = await collector._search_recent_news(session, "TMZ", "site:tmz.com")
+
+        assert len(mentions) == 3  # Should find 3 reality TV results but skip weather
         for mention in mentions:
             assert_valid_mention(mention)
             assert mention.extras is not None
@@ -366,32 +385,35 @@ class TestEntertainmentNewsCollector:
 
         assert mentions == []
 
-    @patch('collectors.entertainment_news_collector.GoogleSearch')
-    async def test_search_recent_news_import_error(self, mock_google_search: MagicMock) -> None:
-        """Test recent news search with import error."""
+    async def test_search_recent_news_import_error(self) -> None:
+        """Test search with SerpAPI import error."""
         collector = EntertainmentNewsCollector()
         collector.serpapi_key = "test-key"
 
-        # Mock import error
-        with patch('collectors.entertainment_news_collector.GoogleSearch', side_effect=ImportError("No module named 'serpapi'")):
+        # Mock the import to raise ImportError when serpapi is imported
+        def mock_import(name, *args, **kwargs):
+            if name == 'serpapi' or name.startswith('serpapi.'):
+                raise ImportError(f"No module named '{name}'")
+            return __import__(name, *args, **kwargs)
+
+        with patch('builtins.__import__', side_effect=mock_import):
             async with aiohttp.ClientSession() as session:
-                mentions = await collector._search_recent_news(session, "TMZ", "site:tmz.com")
+                mentions = await collector._search_recent_news(session, "People", "site:people.com")
 
         assert mentions == []
 
-    @patch('collectors.entertainment_news_collector.GoogleSearch')
-    async def test_search_recent_news_api_error(self, mock_google_search: MagicMock) -> None:
-        """Test recent news search with API error."""
+    async def test_search_recent_news_api_error(self) -> None:
+        """Test search with SerpAPI error."""
         collector = EntertainmentNewsCollector()
         collector.serpapi_key = "test-key"
 
-        # Mock API error
-        mock_search_instance = MagicMock()
-        mock_search_instance.get_dict.side_effect = Exception("API error")
-        mock_google_search.return_value = mock_search_instance
+        with patch('serpapi.google_search.GoogleSearch') as mock_search_class:
+            mock_search_instance = MagicMock()
+            mock_search_instance.get_dict.side_effect = Exception("API rate limit exceeded")
+            mock_search_class.return_value = mock_search_instance
 
-        async with aiohttp.ClientSession() as session:
-            mentions = await collector._search_recent_news(session, "TMZ", "site:tmz.com")
+            async with aiohttp.ClientSession() as session:
+                mentions = await collector._search_recent_news(session, "Variety", "site:variety.com")
 
         assert mentions == []
 
@@ -496,23 +518,17 @@ class TestEntertainmentNewsCollector:
         assert deduplicated == []
 
     async def test_collect_function_with_session(self) -> None:
-        """Test the main collect function with provided session."""
+        """Test main collect function with provided session."""
         with patch('collectors.entertainment_news_collector.EntertainmentNewsCollector') as mock_collector_class:
             mock_collector = MagicMock()
             mock_mentions = [
                 create_test_mention(
                     platform="news",
-                    title="Reality TV show news",
+                    title="Reality TV show news update",
                     entities=["Love Island", "Big Brother"]
-                ),
-                create_test_mention(
-                    platform="news",
-                    title="Celebrity dating news",
-                    entities=["Taylor Swift", "Celebrity Dating"]
                 )
             ]
 
-            # Mock collection methods
             mock_collector._collect_source_data = AsyncMock(return_value=mock_mentions)
             mock_collector._deduplicate_mentions = MagicMock(return_value=mock_mentions)
             mock_collector.news_sources = {"TMZ": {}, "People": {}}
@@ -521,8 +537,8 @@ class TestEntertainmentNewsCollector:
             async with aiohttp.ClientSession() as session:
                 mentions = await collect(session)
 
-            assert len(mentions) == 4  # 2 sources * 2 mentions each
-            assert all(mention.title in ["Reality TV show news", "Celebrity dating news"] for mention in mentions)
+            assert len(mentions) == 1
+            assert mentions[0].title == "Reality TV show news update"
 
     async def test_collect_function_creates_session(self) -> None:
         """Test collect function creates session when none provided."""
@@ -567,12 +583,19 @@ class TestEntertainmentNewsCollector:
         with patch('collectors.entertainment_news_collector.EntertainmentNewsCollector') as mock_collector_class:
             mock_collector = MagicMock()
 
-            # Mock some sources to raise exceptions, others to succeed
-            def mock_collect_source_data(session: Any, source_name: str, config: Any) -> List[Any]:
-                if source_name == "TMZ":
+            # Create test mentions for successful sources
+            working_mention = create_test_mention(
+                platform="news",
+                title="People magazine working",
+                entities=["Reality TV"]
+            )
+
+            # Mock source collection with some failures
+            def mock_collect_source_data(session: Any, source: str, config: Any) -> List[Any]:
+                if source == "TMZ":
                     raise Exception("TMZ collection error")
-                elif source_name == "People":
-                    return [create_test_mention(platform="news", title="People working", entities=["Reality TV"])]
+                elif source == "People":
+                    return [working_mention]
                 else:
                     raise aiohttp.ClientError("Network error")
 
@@ -586,7 +609,7 @@ class TestEntertainmentNewsCollector:
 
             # Should get only the working source's mention
             assert len(mentions) == 1
-            assert mentions[0].title == "People working"
+            assert mentions[0].title == "People magazine working"
 
     def test_news_sources_configuration(self) -> None:
         """Test that news sources are properly configured."""

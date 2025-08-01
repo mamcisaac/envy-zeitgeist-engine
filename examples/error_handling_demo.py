@@ -9,39 +9,41 @@ collection features in the Envy Zeitgeist Engine.
 import asyncio
 import sys
 from pathlib import Path
+from typing import Any, Dict, List
 
 # Add the project root to the path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from envy_toolkit.error_handler import (
+# Envy toolkit imports
+from envy_toolkit.error_handler import (  # noqa: E402
     get_error_handler,
     handle_api_error,
     handle_errors,
 )
-from envy_toolkit.exceptions import (
+from envy_toolkit.exceptions import (  # noqa: E402
     DataCollectionError,
     ExternalServiceError,
     ValidationError,
 )
-from envy_toolkit.health_check import quick_health_check
-from envy_toolkit.logging_config import (
+from envy_toolkit.health_check import quick_health_check  # noqa: E402
+from envy_toolkit.logging_config import (  # noqa: E402
     LogContext,
     generate_request_id,
     setup_development_logging,
 )
-from envy_toolkit.metrics import collect_metrics, get_metrics_collector
+from envy_toolkit.metrics import collect_metrics, get_metrics_collector  # noqa: E402
 
 
 class DemoCollector:
     """Demo collector to show error handling patterns."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.logger = setup_development_logging()
 
     @collect_metrics(operation_name="demo_collection")
     @handle_errors(operation_name="demo_collection")
-    async def collect_data(self, simulate_error: bool = False) -> list:
+    async def collect_data(self, simulate_error: bool = False) -> List[Dict[str, Any]]:
         """Demo data collection with error handling."""
         request_id = generate_request_id()
 
@@ -83,9 +85,9 @@ class DemoCollector:
             self.logger.info(f"Successfully collected {len(data)} items")
             return data
 
-    def validate_data(self, data: list) -> list:
+    def validate_data(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Demo validation with error handling."""
-        valid_items = []
+        valid_items: List[Dict[str, Any]] = []
 
         for item in data:
             try:
@@ -126,7 +128,7 @@ class DemoCollector:
         return valid_items
 
 
-async def demonstrate_error_handling():
+async def demonstrate_error_handling() -> Dict[str, Any]:
     """Demonstrate the error handling system."""
     print("🚀 Demonstrating Enhanced Error Handling & Logging System")
     print("=" * 60)
@@ -192,7 +194,7 @@ async def demonstrate_error_handling():
         fallback=lambda: ["fallback_item"],
         suppress_reraise=True
     )
-    def risky_operation():
+    def risky_operation() -> str:
         raise ExternalServiceError("Service unavailable")
 
     result = risky_operation()
@@ -243,7 +245,7 @@ if __name__ == "__main__":
     print(f"\n📋 Final Summary: {result}")
 
     # Exit with appropriate code
-    if result["success"]:
+    if result and result["success"]:
         sys.exit(0)
     else:
         sys.exit(1)
