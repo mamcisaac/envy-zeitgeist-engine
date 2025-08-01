@@ -55,7 +55,7 @@ def mock_aiohttp() -> Generator[aioresponses, None, None]:
         yield m
 
 
-@pytest.fixture  
+@pytest.fixture
 def mock_requests() -> Generator[responses.RequestsMock, None, None]:
     """Mock requests library for synchronous HTTP calls."""
     with responses.RequestsMock() as rsps:

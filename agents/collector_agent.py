@@ -14,6 +14,14 @@ from envy_toolkit.clients import (
     SupabaseClient,
 )
 from envy_toolkit.duplicate import DuplicateDetector
+from envy_toolkit.error_handler import handle_errors
+from envy_toolkit.exceptions import (
+    DataCollectionError,
+    ProcessingError,
+    ValidationError,
+)
+from envy_toolkit.logging_config import LogContext
+from envy_toolkit.metrics import collect_metrics, get_metrics_collector
 from envy_toolkit.schema import RawMention
 from envy_toolkit.twitter_free import collect_twitter
 
@@ -46,30 +54,91 @@ class CollectorAgent:
         self.perplexity = PerplexityClient()
         self.deduper = DuplicateDetector()
 
+    @collect_metrics(operation_name="collector_agent_run")
+    @handle_errors(operation_name="collector_agent_run")
     async def run(self) -> None:
-        """Main collection pipeline"""
-        logger.info("Starting CollectorAgent run")
+        """Main collection pipeline with enhanced error handling and metrics."""
+        with LogContext(operation="collector_agent_run"):
+            logger.info("Starting CollectorAgent run")
 
-        # Collect from all sources
-        raw_mentions = await self._scrape_all_sources()
-        logger.info(f"Collected {len(raw_mentions)} raw mentions")
+        metrics = get_metrics_collector()
+        metrics.increment_counter("collector_agent_runs")
 
-        # Validate and clean
-        valid_mentions = [m for m in raw_mentions if self._validate_item(m)]
-        logger.info(f"Validated {len(valid_mentions)} mentions")
+        # Collect from all sources with error handling
+        try:
+            raw_mentions = await self._scrape_all_sources()
+            with LogContext(raw_mentions_count=len(raw_mentions)):
+                logger.info(f"Collected {len(raw_mentions)} raw mentions")
+            metrics.set_gauge("raw_mentions_collected", len(raw_mentions))
+        except Exception as e:
+            raise DataCollectionError(
+                "Failed to collect raw mentions from sources",
+                cause=e,
+                context={"sources": "all"}
+            )
 
-        # Deduplicate
-        unique_mentions = self.deduper.filter_duplicates(
-            [m.model_dump() for m in valid_mentions]
-        )
-        logger.info(f"After deduplication: {len(unique_mentions)} unique mentions")
+        # Validate and clean with metrics
+        try:
+            valid_mentions = [m for m in raw_mentions if self._validate_item(m)]
+            validation_rate = len(valid_mentions) / len(raw_mentions) if raw_mentions else 0
+            with LogContext(valid_mentions_count=len(valid_mentions), validation_rate=validation_rate):
+                logger.info(f"Validated {len(valid_mentions)} mentions (rate: {validation_rate:.2%})")
+            metrics.set_gauge("valid_mentions_count", len(valid_mentions))
+            metrics.observe_histogram("validation_rate", validation_rate)
+        except Exception as e:
+            raise ValidationError(
+                "Failed to validate collected mentions",
+                cause=e,
+                context={"raw_count": len(raw_mentions)}
+            )
 
-        # Add embeddings
-        enriched_mentions = await self._add_embeddings(unique_mentions)
+        # Deduplicate with error handling
+        try:
+            unique_mentions = self.deduper.filter_duplicates(
+                [m.model_dump() for m in valid_mentions]
+            )
+            len(unique_mentions) / len(valid_mentions) if valid_mentions else 0
+            duplicates_removed = len(valid_mentions) - len(unique_mentions)
+            with LogContext(unique_mentions_count=len(unique_mentions), duplicates_removed=duplicates_removed):
+                logger.info(f"After deduplication: {len(unique_mentions)} unique mentions ({duplicates_removed} duplicates removed)")
+            metrics.set_gauge("unique_mentions_count", len(unique_mentions))
+            metrics.increment_counter("duplicates_removed", duplicates_removed)
+        except Exception as e:
+            raise ProcessingError(
+                "Failed to deduplicate mentions",
+                operation="deduplication",
+                cause=e,
+                context={"valid_count": len(valid_mentions)}
+            )
 
-        # Write to database
-        await self.supabase.bulk_insert_mentions(enriched_mentions)
-        logger.info("CollectorAgent run complete")
+        # Add embeddings with error handling
+        try:
+            enriched_mentions = await self._add_embeddings(unique_mentions)
+            with LogContext(enriched_mentions_count=len(enriched_mentions)):
+                logger.info(f"Added embeddings to {len(enriched_mentions)} mentions")
+            metrics.set_gauge("enriched_mentions_count", len(enriched_mentions))
+        except Exception:
+            # Use fallback without embeddings for graceful degradation
+            logger.warning("Failed to add embeddings, proceeding without embeddings", exc_info=True)
+            enriched_mentions = unique_mentions
+            metrics.increment_counter("embedding_failures")
+
+        # Write to database with error handling
+        try:
+            await self.supabase.bulk_insert_mentions(enriched_mentions)
+            with LogContext(stored_mentions_count=len(enriched_mentions)):
+                logger.info(f"Successfully stored {len(enriched_mentions)} mentions to database")
+            metrics.increment_counter("mentions_stored", len(enriched_mentions))
+        except Exception as e:
+            raise DataCollectionError(
+                "Failed to store mentions to database",
+                cause=e,
+                context={"mention_count": len(enriched_mentions)}
+            )
+
+        with LogContext(operation="collector_agent_run", final_count=len(enriched_mentions)):
+            logger.info("CollectorAgent run complete")
+        metrics.increment_counter("collector_agent_runs_completed")
 
     def _validate_item(self, item: RawMention) -> bool:
         """Validate that a mention is real and has required data"""

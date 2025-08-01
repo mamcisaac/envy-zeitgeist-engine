@@ -13,6 +13,13 @@ import feedparser
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
+from envy_toolkit.error_handler import get_error_handler, handle_errors
+from envy_toolkit.exceptions import (
+    DataCollectionError,
+    ExternalServiceError,
+)
+from envy_toolkit.logging_config import LogContext
+from envy_toolkit.metrics import collect_metrics, get_metrics_collector
 from envy_toolkit.schema import CollectorMixin, RawMention
 
 # Load environment variables
@@ -76,6 +83,7 @@ class EnhancedCelebrityTracker(CollectorMixin):
             "Daily Mail Celebrity": "https://www.dailymail.co.uk/tvshowbiz/index.html"
         }
 
+    @collect_metrics(operation_name="google_news_collection")
     async def _collect_google_news(self, session: aiohttp.ClientSession) -> List[RawMention]:
         """Collect from Google News RSS feeds.
 
@@ -136,10 +144,23 @@ class EnhancedCelebrityTracker(CollectorMixin):
                                 mentions.append(mention)
 
             except Exception as e:
-                logger.error(f"Error collecting Google News {topic}: {e}")
+                with LogContext(topic=topic, collection_method="google_news_rss"):
+                    get_error_handler().handle_error(
+                        error=DataCollectionError(
+                            f"Failed to collect Google News for topic '{topic}'",
+                            source="google_news",
+                            url=url,
+                            cause=e
+                        ),
+                        context={"topic": topic, "url": url},
+                        operation_name="google_news_collection",
+                        suppress_reraise=True
+                    )
+                get_metrics_collector().increment_counter("google_news_collection_errors")
 
         return mentions
 
+    @collect_metrics(operation_name="newsapi_collection")
     async def _collect_newsapi(self, session: aiohttp.ClientSession) -> List[RawMention]:
         """Collect from NewsAPI.
 
@@ -203,7 +224,19 @@ class EnhancedCelebrityTracker(CollectorMixin):
                             mentions.append(mention)
 
         except Exception as e:
-            logger.error(f"Error collecting from NewsAPI: {e}")
+            with LogContext(collection_method="newsapi"):
+                get_error_handler().handle_error(
+                    error=ExternalServiceError(
+                        "Failed to collect from NewsAPI",
+                        service_name="newsapi",
+                        endpoint="/v2/everything",
+                        cause=e
+                    ),
+                    context={"api_key_present": bool(self.news_api_key)},
+                    operation_name="newsapi_collection",
+                    suppress_reraise=True
+                )
+            get_metrics_collector().increment_counter("newsapi_collection_errors")
 
         return mentions
 
@@ -457,6 +490,8 @@ class EnhancedCelebrityTracker(CollectorMixin):
         return datetime.utcnow()
 
 
+@collect_metrics(operation_name="celebrity_collection")
+@handle_errors(operation_name="celebrity_collection")
 async def collect(session: Optional[aiohttp.ClientSession] = None) -> List[RawMention]:
     """Collect celebrity relationship mentions from various sources.
 
@@ -468,7 +503,8 @@ async def collect(session: Optional[aiohttp.ClientSession] = None) -> List[RawMe
     Returns:
         List of RawMention objects containing celebrity relationship mentions.
     """
-    logger.info("Starting enhanced celebrity relationship tracking...")
+    with LogContext(operation="celebrity_collection"):
+        logger.info("Starting enhanced celebrity relationship tracking...")
 
     tracker = EnhancedCelebrityTracker()
     session_created = False
@@ -501,7 +537,13 @@ async def collect(session: Optional[aiohttp.ClientSession] = None) -> List[RawMe
             if isinstance(result, list):
                 all_mentions.extend(result)
             elif isinstance(result, Exception):
-                logger.error(f"Collection error: {result}")
+                with LogContext(collection_method="celebrity_tracking"):
+                    get_error_handler().handle_error(
+                        error=result,
+                        context={"task_type": "parallel_collection"},
+                        operation_name="celebrity_collection_task",
+                        suppress_reraise=True
+                    )
 
         # Deduplicate by URL
         seen_urls: set[str] = set()
@@ -512,7 +554,14 @@ async def collect(session: Optional[aiohttp.ClientSession] = None) -> List[RawMe
                 seen_urls.add(mention.url)
                 unique_mentions.append(mention)
 
-        logger.info(f"Collected {len(unique_mentions)} unique celebrity relationship mentions")
+        with LogContext(operation="celebrity_collection", total_mentions=len(unique_mentions)):
+            logger.info(f"Collected {len(unique_mentions)} unique celebrity relationship mentions")
+
+        # Record collection metrics
+        metrics = get_metrics_collector()
+        metrics.set_gauge("celebrity_mentions_collected", len(unique_mentions))
+        metrics.observe_histogram("celebrity_collection_results", len(unique_mentions))
+
         return unique_mentions
 
     finally:

@@ -5,6 +5,7 @@ Tests interactions between different collectors and shared infrastructure.
 """
 
 import asyncio
+import logging
 from datetime import datetime
 from typing import Any, List
 from unittest.mock import AsyncMock, patch
@@ -18,6 +19,9 @@ from collectors.youtube_engagement_collector import collect as youtube_collect
 from envy_toolkit.duplicate import DuplicateDetector
 from envy_toolkit.schema import RawMention
 from tests.utils import create_test_mention
+
+# Get logger for test module
+logger = logging.getLogger(__name__)
 
 
 class TestCollectorIntegration:
@@ -260,9 +264,9 @@ class TestCollectorIntegration:
                     try:
                         result = await collector(session)
                         all_results.extend(result)
-                    except Exception as e:
+                    except Exception:
                         # Log but continue
-                        print(f"Collector error: {e}")
+                        logger.warning("Collector error during integration test", exc_info=True, extra={"collector": collector.__name__ if hasattr(collector, '__name__') else str(collector)})
 
             # Verify all results are RawMention objects with consistent structure
             for mention in all_results:
