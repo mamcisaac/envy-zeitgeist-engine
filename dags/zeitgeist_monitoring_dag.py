@@ -8,14 +8,14 @@ zeitgeist data pipeline.
 from datetime import datetime, timedelta
 
 from airflow import DAG  # type: ignore[import-not-found]
-from airflow.operators.python import PythonOperator  # type: ignore[import-not-found]
-from airflow.providers.postgres.operators.postgres import PostgresOperator  # type: ignore[import-not-found]
-
+from airflow.providers.postgres.operators.postgres import (
+    PostgresOperator,  # type: ignore[import-not-found]
+)
 from monitoring.zeitgeist_monitoring import (
+    ALERT_CONFIGS,
+    AlertingOperator,
     DataQualityOperator,
     PerformanceMonitoringOperator,
-    AlertingOperator,
-    ALERT_CONFIGS
 )
 
 default_args = {

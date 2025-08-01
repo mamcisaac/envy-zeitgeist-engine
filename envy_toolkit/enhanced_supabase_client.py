@@ -104,7 +104,7 @@ class EnhancedSupabaseClient:
         import urllib.parse
         parsed = urllib.parse.urlparse(self.supabase_url)
         host = parsed.netloc
-        
+
         # Ensure host is a string (handle potential bytes)
         if isinstance(host, bytes):
             host = host.decode('utf-8')

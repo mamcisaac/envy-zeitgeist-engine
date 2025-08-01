@@ -11,11 +11,15 @@ from typing import Any, Dict
 
 from airflow import DAG  # type: ignore[import-not-found]
 from airflow.models import Variable  # type: ignore[import-not-found]
-from airflow.operators.docker_operator import DockerOperator  # type: ignore[import-not-found]
+from airflow.operators.docker_operator import (
+    DockerOperator,  # type: ignore[import-not-found]
+)
 from airflow.operators.dummy import DummyOperator  # type: ignore[import-not-found]
 from airflow.operators.python import PythonOperator  # type: ignore[import-not-found]
+from airflow.providers.http.sensors.http import (
+    HttpSensor,  # type: ignore[import-not-found]
+)
 from airflow.utils.task_group import TaskGroup  # type: ignore[import-not-found]
-from airflow.providers.http.sensors.http import HttpSensor  # type: ignore[import-not-found]
 
 # Configuration
 DOCKER_IMAGE_TAG = Variable.get("zeitgeist_docker_tag", default_var="latest")
@@ -34,14 +38,14 @@ def get_env_vars() -> Dict[str, str]:
         'SUPABASE_ANON_KEY',
         'OPENAI_API_KEY',
     ]
-    
+
     env_vars = {}
     for var in required_vars:
         value = Variable.get(f"zeitgeist_{var.lower()}", default_var=os.getenv(var))
         if not value:
             raise ValueError(f"Missing required environment variable: {var}")
         env_vars[var] = value
-    
+
     # Optional vars
     optional_vars = [
         'ANTHROPIC_API_KEY',
@@ -52,12 +56,12 @@ def get_env_vars() -> Dict[str, str]:
         'YOUTUBE_API_KEY',
         'PERPLEXITY_API_KEY',
     ]
-    
+
     for var in optional_vars:
         value = Variable.get(f"zeitgeist_{var.lower()}", default_var=os.getenv(var, ""))
         if value:
             env_vars[var] = value
-    
+
     return env_vars
 
 # Data quality check function
@@ -68,18 +72,18 @@ def check_data_quality(**context: Any) -> None:
     # 2. Data freshness (no stale data)
     # 3. Source diversity (multiple platforms represented)
     # 4. No critical errors in logs
-    
+
     # For now, we'll implement a basic check
     task_instance = context['task_instance']
     collector_logs = task_instance.xcom_pull(task_ids='collector_group.run_collector_agent')
-    
+
     if collector_logs and "ERROR" in str(collector_logs):
         raise ValueError("Collector task had errors - check logs")
-    
+
     print("Data quality check passed")
 
 # SLA miss callback
-def sla_miss_callback(dag: Any, task_list: Any, blocking_task_list: Any, 
+def sla_miss_callback(dag: Any, task_list: Any, blocking_task_list: Any,
                      slas: Any, blocking_tis: Any) -> None:
     """Alert when SLA is missed."""
     print(f"SLA missed for DAG {dag.dag_id}")
@@ -146,7 +150,7 @@ health_check = HttpSensor(
 
 # Collector task group
 with TaskGroup(group_id='collector_group', dag=dag) as collector_group:
-    
+
     # Run collector in Docker
     run_collector = DockerOperator(
         task_id='run_collector_agent',
@@ -173,7 +177,7 @@ with TaskGroup(group_id='collector_group', dag=dag) as collector_group:
         - RSS feeds
         """
     )
-    
+
     # Validate collection results
     validate_collection = PythonOperator(
         task_id='validate_collection',
@@ -181,12 +185,12 @@ with TaskGroup(group_id='collector_group', dag=dag) as collector_group:
         provide_context=True,
         dag=dag,
     )
-    
+
     run_collector >> validate_collection
 
 # Analysis task group
 with TaskGroup(group_id='analysis_group', dag=dag) as analysis_group:
-    
+
     # Run zeitgeist analysis in Docker
     run_zeitgeist = DockerOperator(
         task_id='run_zeitgeist_agent',
@@ -212,7 +216,7 @@ with TaskGroup(group_id='analysis_group', dag=dag) as analysis_group:
         - Create trending topics records
         """
     )
-    
+
     # Generate daily brief
     generate_brief = DockerOperator(
         task_id='generate_daily_brief',
@@ -231,7 +235,7 @@ with TaskGroup(group_id='analysis_group', dag=dag) as analysis_group:
         Generates the daily brief in Markdown format
         """
     )
-    
+
     run_zeitgeist >> generate_brief
 
 # Success notification

@@ -6,7 +6,7 @@ mechanisms for external API calls and unreliable operations.
 """
 
 import asyncio
-import random
+import secrets
 import time
 from dataclasses import dataclass
 from functools import wraps
@@ -78,7 +78,9 @@ def calculate_delay(
     # Add jitter to prevent thundering herd
     if jitter:
         jitter_amount = delay * 0.1  # 10% jitter
-        delay += random.uniform(-jitter_amount, jitter_amount)
+        # Use cryptographically secure random for production
+        secure_random = secrets.SystemRandom()
+        delay += secure_random.uniform(-jitter_amount, jitter_amount)
         delay = max(0.0, delay)  # Ensure non-negative
 
     return delay

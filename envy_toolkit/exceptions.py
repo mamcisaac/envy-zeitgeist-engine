@@ -346,7 +346,7 @@ class DatabaseError(EnvyBaseError):
         # Determine if error is transient
         transient_indicators = ["connection", "timeout", "deadlock", "lock"]
         is_transient = any(indicator in message.lower() for indicator in transient_indicators)
-        
+
         super().__init__(
             message=message,
             error_code=error_code or "DATABASE_ERROR",
