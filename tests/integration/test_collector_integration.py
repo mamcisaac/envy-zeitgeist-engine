@@ -216,13 +216,15 @@ class TestCollectorIntegration:
 
             async def celebrity_collector(session: Any) -> Any:
                 # Simulate using the session
-                async with session.get("https://tmz.com") as _:
+                response = await session.get("https://tmz.com")
+                async with response as _:
                     pass
                 return [create_test_mention(platform="news")]
 
             async def entertainment_collector(session: Any) -> Any:
                 # Simulate using the session
-                async with session.get("https://variety.com") as _:
+                response = await session.get("https://variety.com")
+                async with response as _:
                     pass
                 return [create_test_mention(platform="news")]
 

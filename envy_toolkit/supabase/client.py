@@ -3,7 +3,7 @@ Main enhanced Supabase client that integrates all components.
 """
 
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
@@ -57,6 +57,8 @@ class EnhancedSupabaseClient:
     async def _get_database_url(self) -> str:
         """Get or create database URL."""
         if self._database_url is None:
+            if self.supabase_url is None:
+                raise ValueError("Supabase URL is required")
             self._database_url = await self.pool_manager.get_database_url(self.supabase_url)
             if not self._database_url:
                 raise ValueError("Connection pooling not available - database credentials missing")
@@ -97,12 +99,12 @@ class EnhancedSupabaseClient:
         return self.operations
 
     # Delegate connection management
-    async def get_connection(self):
+    async def get_connection(self) -> Any:
         """Get a database connection from the pool."""
         database_url = await self._get_database_url()
         return self.transaction_manager.get_connection(database_url)
 
-    async def transaction(self):
+    async def transaction(self) -> Any:
         """Create a database transaction with automatic rollback on error."""
         database_url = await self._get_database_url()
         return self.transaction_manager.transaction(database_url)
@@ -190,6 +192,27 @@ class EnhancedSupabaseClient:
             entity_name,
             hours,
             min_relevance
+        )
+
+    async def get_trending_topics_by_date_range(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Get trending topics within a date range."""
+        query = """
+            SELECT *
+            FROM trending_topics
+            WHERE created_at >= %s
+            AND created_at <= %s
+            ORDER BY score DESC
+            LIMIT %s
+        """
+        return await self.execute_query(
+            query,
+            [start_date.isoformat(), end_date.isoformat(), limit],
+            use_cache=True
         )
 
     # Delegate monitoring operations

@@ -94,7 +94,7 @@ class TestRetrySync:
 
         @retry_sync(RetryConfig(max_attempts=3))
         def test_func() -> str:
-            return mock_func()
+            return mock_func()  # type: ignore[no-any-return]
 
         result = test_func()
         assert result == "success"
@@ -106,7 +106,7 @@ class TestRetrySync:
 
         @retry_sync(RetryConfig(max_attempts=3, base_delay=0.01))
         def test_func() -> str:
-            return mock_func()
+            return mock_func()  # type: ignore[no-any-return]
 
         result = test_func()
         assert result == "success"
@@ -118,7 +118,7 @@ class TestRetrySync:
 
         @retry_sync(RetryConfig(max_attempts=3))
         def test_func() -> None:
-            return mock_func()
+            return mock_func()  # type: ignore[no-any-return]
 
         with pytest.raises(RetryExhaustedError) as exc_info:
             test_func()
@@ -133,7 +133,7 @@ class TestRetrySync:
 
         @retry_sync(RetryConfig(max_attempts=3, retryable_exceptions=(ValueError,), base_delay=0.01))
         def test_func() -> str:
-            return mock_func()
+            return mock_func()  # type: ignore[no-any-return]
 
         result = test_func()
         assert result == "success"
@@ -145,7 +145,7 @@ class TestRetrySync:
 
         @retry_sync(RetryConfig(max_attempts=3, retryable_exceptions=(ValueError,)))
         def test_func() -> None:
-            return mock_func()
+            return mock_func()  # type: ignore[no-any-return]
 
         with pytest.raises(TypeError):
             test_func()
@@ -174,7 +174,7 @@ class TestRetryAsync:
 
         @retry_async(RetryConfig(max_attempts=3))
         async def test_func() -> str:
-            return await mock_func()
+            return await mock_func()  # type: ignore[no-any-return]
 
         result = await test_func()
         assert result == "success"
@@ -187,7 +187,7 @@ class TestRetryAsync:
 
         @retry_async(RetryConfig(max_attempts=3, base_delay=0.01))
         async def test_func() -> str:
-            return await mock_func()
+            return await mock_func()  # type: ignore[no-any-return]
 
         result = await test_func()
         assert result == "success"
@@ -200,7 +200,7 @@ class TestRetryAsync:
 
         @retry_async(RetryConfig(max_attempts=3))
         async def test_func() -> None:
-            return await mock_func()
+            return await mock_func()  # type: ignore[no-any-return]
 
         with pytest.raises(RetryExhaustedError) as exc_info:
             await test_func()
@@ -266,7 +266,7 @@ class TestRetryIntegration:
             base_delay=0.01
         ))
         def fetch_data() -> str:
-            return mock_network()
+            return mock_network()  # type: ignore[no-any-return]
 
         result = fetch_data()
         assert result == "data"

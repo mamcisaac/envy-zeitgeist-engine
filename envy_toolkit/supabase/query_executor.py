@@ -41,7 +41,7 @@ class QueryExecutor:
         query: str,
         params: Optional[List[Any]] = None,
         use_cache: bool = True
-    ) -> List[asyncpg.Record]:
+    ) -> List[Any]:
         """Execute a query with optional caching."""
         # Check cache for SELECT queries
         if use_cache and query.strip().upper().startswith('SELECT'):
@@ -50,7 +50,7 @@ class QueryExecutor:
                 timestamp, cached_result = self._query_cache[cache_key]
                 if self._is_cache_valid(timestamp):
                     get_metrics_collector().increment_counter("db_cache_hits")
-                    return cached_result
+                    return cached_result  # type: ignore[no-any-return]
                 else:
                     # Remove expired cache entry
                     del self._query_cache[cache_key]
@@ -68,7 +68,7 @@ class QueryExecutor:
                 self._query_cache[cache_key] = (datetime.utcnow(), result)
                 get_metrics_collector().increment_counter("db_cache_misses")
 
-            return result
+            return result  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"Query execution failed: {e}")
@@ -87,7 +87,7 @@ class QueryExecutor:
         params: Optional[List[Any]] = None,
         use_cache: bool = True,
         use_transaction: bool = False
-    ) -> List[asyncpg.Record]:
+    ) -> List[Any]:
         """Execute a database query with connection management.
 
         Args:
@@ -106,10 +106,10 @@ class QueryExecutor:
         ):
             if use_transaction:
                 async with self.transaction_manager.transaction(database_url) as conn:
-                    return await self._execute_query(conn, query, params, use_cache)
+                    return await self._execute_query(conn, query, params, use_cache)  # type: ignore[no-any-return]
             else:
                 async with self.transaction_manager.get_connection(database_url) as conn:
-                    return await self._execute_query(conn, query, params, use_cache)
+                    return await self._execute_query(conn, query, params, use_cache)  # type: ignore[no-any-return]
 
     async def execute_many(
         self,

@@ -36,7 +36,7 @@ class CircuitBreakerConfig:
 
     """
     failure_threshold: int = 5
-    timeout_duration: int = 60
+    timeout_duration: float = 60.0
     expected_exception: Type[Exception] = Exception
     success_threshold: int = 3
 
@@ -44,7 +44,7 @@ class CircuitBreakerConfig:
 class CircuitBreakerOpenError(Exception):
     """Raised when circuit breaker is open and calls are rejected."""
 
-    def __init__(self, circuit_name: str, timeout_duration: int) -> None:
+    def __init__(self, circuit_name: str, timeout_duration: float) -> None:
         self.circuit_name = circuit_name
         self.timeout_duration = timeout_duration
         super().__init__(
@@ -104,7 +104,7 @@ class CircuitBreaker:
         self,
         name: str,
         failure_threshold: int = 5,
-        timeout_duration: int = 60,
+        timeout_duration: float = 60.0,
         expected_exception: Type[Exception] = Exception,
         success_threshold: int = 3,
     ) -> None:
@@ -352,7 +352,7 @@ class CircuitBreakerRegistry:
         self,
         name: str,
         failure_threshold: int = 5,
-        timeout_duration: int = 60,
+        timeout_duration: float = 60.0,
         expected_exception: Type[Exception] = Exception,
         success_threshold: int = 3,
     ) -> CircuitBreaker:
@@ -422,7 +422,7 @@ async def with_circuit_breaker(
     func: Callable[..., Awaitable[Any]],
     *args: Any,
     failure_threshold: int = 5,
-    timeout_duration: int = 60,
+    timeout_duration: float = 60.0,
     **kwargs: Any,
 ) -> Any:
     """Execute function with circuit breaker protection.
@@ -449,7 +449,7 @@ async def with_circuit_breaker(
 def circuit_breaker(
     name: str,
     failure_threshold: int = 5,
-    timeout_duration: int = 60,
+    timeout_duration: float = 60.0,
     expected_exception: Type[Exception] = Exception,
     success_threshold: int = 3,
 ) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:

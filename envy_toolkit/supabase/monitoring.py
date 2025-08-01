@@ -86,17 +86,17 @@ class DatabaseMonitor:
                 use_cache=False
             )
             if records:
-                stats["connections"] = dict(records[0])
+                stats["connections"] = [dict(records[0])]
         except Exception as e:
             logger.error(f"Failed to get connection stats: {e}")
-            stats["connections"] = {}
+            stats["connections"] = []
 
         return stats
 
     @collect_metrics(operation_name="health_check")
     async def health_check(self, database_url: str) -> Dict[str, Any]:
         """Perform a comprehensive health check of the database."""
-        health_status = {
+        health_status: Dict[str, Any] = {
             "status": "healthy",
             "checks": {},
             "warnings": []
@@ -239,7 +239,7 @@ class DatabaseMonitor:
     @collect_metrics(operation_name="get_maintenance_recommendations")
     async def get_maintenance_recommendations(self, database_url: str) -> Dict[str, List[str]]:
         """Get maintenance recommendations based on database statistics."""
-        recommendations = {
+        recommendations: Dict[str, List[str]] = {
             "urgent": [],
             "suggested": [],
             "informational": []

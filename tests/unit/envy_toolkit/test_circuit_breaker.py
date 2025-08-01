@@ -113,8 +113,8 @@ class TestCircuitBreaker:
         # Third failure opens circuit
         with pytest.raises(ValueError):
             await cb.call(func)
-        assert cb.state == CircuitState.OPEN
-        assert cb.stats.last_failure_time is not None
+        assert cb.state == CircuitState.OPEN  # type: ignore[comparison-overlap]
+        assert cb.stats.last_failure_time is not None  # type: ignore[unreachable]
 
     @pytest.mark.asyncio
     async def test_open_circuit_rejects_calls(self) -> None:
@@ -155,8 +155,8 @@ class TestCircuitBreaker:
         result = await cb.call(func)
         assert result == "success"
         # After single success with success_threshold=3, should still be HALF_OPEN
-        assert cb.state == CircuitState.HALF_OPEN
-        assert cb.stats.success_count == 1
+        assert cb.state == CircuitState.HALF_OPEN  # type: ignore[comparison-overlap]
+        assert cb.stats.success_count == 1  # type: ignore[unreachable]
 
     @pytest.mark.asyncio
     async def test_half_open_failure_reopens(self) -> None:
@@ -210,8 +210,8 @@ class TestCircuitBreaker:
 
         # Manual reset
         await cb.reset()
-        assert cb.state == CircuitState.CLOSED
-        assert cb.stats.failure_count == 0
+        assert cb.state == CircuitState.CLOSED  # type: ignore[comparison-overlap]
+        assert cb.stats.failure_count == 0  # type: ignore[unreachable]
         assert cb.stats.success_count == 0
 
     @pytest.mark.asyncio
@@ -221,10 +221,10 @@ class TestCircuitBreaker:
         assert cb.state == CircuitState.CLOSED
 
         await cb.force_open()
-        assert cb.state == CircuitState.OPEN
+        assert cb.state == CircuitState.OPEN  # type: ignore[comparison-overlap]
 
         # Should reject calls
-        func = AsyncMock(return_value="success")
+        func = AsyncMock(return_value="success")  # type: ignore[unreachable]
         with pytest.raises(CircuitBreakerOpenError):
             await cb.call(func)
 
@@ -286,9 +286,9 @@ class TestCircuitBreaker:
 
         # Need 3 successes to close
         assert await cb.call(func) == "success1"
-        assert cb.state == CircuitState.HALF_OPEN
+        assert cb.state == CircuitState.HALF_OPEN  # type: ignore[comparison-overlap]
 
-        assert await cb.call(func) == "success2"
+        assert await cb.call(func) == "success2"  # type: ignore[unreachable]
         assert cb.state == CircuitState.HALF_OPEN
 
         assert await cb.call(func) == "success3"
@@ -365,8 +365,8 @@ class TestCircuitBreakerRegistry:
         # Reset all
         await registry.reset_all()
 
-        assert cb1.state == CircuitState.CLOSED
-        assert cb2.state == CircuitState.CLOSED
+        assert cb1.state == CircuitState.CLOSED  # type: ignore[comparison-overlap]
+        assert cb2.state == CircuitState.CLOSED  # type: ignore[unreachable]
 
     def test_list_breakers(self) -> None:
         """Test listing all breaker names."""
@@ -407,7 +407,7 @@ class TestCircuitBreakerIntegration:
                         raise ConnectionError("API unavailable")
                     return {"data": "success"}
 
-                return await self.cb.call(_request)
+                return await self.cb.call(_request)  # type: ignore[no-any-return]
 
         client = APIClient()
 
@@ -445,7 +445,7 @@ class TestCircuitBreakerIntegration:
                     raise ConnectionError("Database connection failed")
                 return [{"id": 1, "name": "Test"}]
 
-            return await cb.call(_query)
+            return await cb.call(_query)  # type: ignore[no-any-return]
 
         # First two calls fail
         for _ in range(2):
@@ -482,7 +482,7 @@ class TestCircuitBreakerIntegration:
                     raise ValueError("Service A down")
                 return "Service A OK"
 
-            return await cb.call(_call)
+            return await cb.call(_call)  # type: ignore[no-any-return]
 
         # Service B depends on A
         async def service_b() -> str:

@@ -44,7 +44,24 @@ SEED_QUERIES = [
 
 
 class CollectorAgent:
-    """Main collector agent that orchestrates all data sources"""
+    """Main collector agent that orchestrates zeitgeist data collection.
+
+    Collects mentions from multiple sources (Twitter, Reddit, news, entertainment sites),
+    validates and deduplicates them, adds embeddings, and stores them to the database.
+    Implements robust error handling, metrics collection, and graceful degradation.
+
+    Attributes:
+        supabase: Database client for storing collected data
+        llm: LLM client for embeddings and query expansion
+        serpapi: SerpAPI client for news search
+        reddit: Reddit client for subreddit searches
+        perplexity: Perplexity client for context enrichment
+        deduper: Duplicate detection utility
+
+    Example:
+        >>> agent = CollectorAgent()
+        >>> await agent.run()
+    """
 
     def __init__(self) -> None:
         self.supabase = SupabaseClient()
@@ -140,7 +157,21 @@ class CollectorAgent:
         metrics.increment_counter("collector_agent_runs_completed")
 
     def _validate_item(self, item: RawMention) -> bool:
-        """Validate that a mention is real and has required data"""
+        """Validate that a mention meets quality and recency requirements.
+
+        Checks domain whitelist, engagement scores, required fields,
+        and recency (must be within 48 hours) to ensure data quality.
+
+        Args:
+            item: Raw mention to validate
+
+        Returns:
+            True if the mention passes validation, False otherwise
+
+        Example:
+            >>> mention = RawMention(title="News", body="Content", ...)
+            >>> is_valid = agent._validate_item(mention)
+        """
         # Check domain whitelist
         url = item.url or ""
         domain = ""
@@ -175,7 +206,18 @@ class CollectorAgent:
         return True
 
     async def _scrape_all_sources(self) -> List[RawMention]:
-        """Collect from all configured sources"""
+        """Collect mentions from all configured data sources in parallel.
+
+        Coordinates collection from Twitter, Reddit, news APIs, and entertainment
+        sites concurrently. Uses expanded queries and handles individual source
+        failures gracefully without stopping the entire collection.
+
+        Returns:
+            List of raw mentions collected from all sources
+
+        Note:
+            Failed source collections are logged but don't stop other sources.
+        """
         all_mentions: List[RawMention] = []
 
         # Get expanded queries
@@ -201,7 +243,21 @@ class CollectorAgent:
         return all_mentions
 
     async def _expand_queries(self, seed_queries: List[str]) -> List[str]:
-        """Use LLM to expand queries with Gen-Z slang and variations"""
+        """Expand search queries using LLM to include current slang and variations.
+
+        Uses GPT-4 to generate alternative phrasings of seed queries with
+        Gen-Z slang, abbreviations, and trending phrases to improve coverage
+        of social media content.
+
+        Args:
+            seed_queries: Base search queries to expand
+
+        Returns:
+            Combined list of original and expanded queries with duplicates removed
+
+        Note:
+            Falls back to original queries if LLM expansion fails.
+        """
         prompt = """For each query below, provide 2 alternative phrasings that Gen-Z might use on social media.
         Include slang, abbreviations, and trending phrases. Format: one query per line.
 
@@ -218,7 +274,20 @@ class CollectorAgent:
             return seed_queries
 
     async def _collect_twitter(self, session: aiohttp.ClientSession) -> List[RawMention]:
-        """Collect from Twitter using free scraping"""
+        """Collect Twitter mentions using free scraping methods.
+
+        Uses the twitter_free module to scrape Twitter content without
+        requiring official API access. Handles rate limiting and errors gracefully.
+
+        Args:
+            session: Async HTTP session for making requests
+
+        Returns:
+            List of raw mentions collected from Twitter
+
+        Note:
+            Failures are logged but don't raise exceptions to avoid breaking collection.
+        """
         mentions = []
         try:
             async for mention in collect_twitter(session):
@@ -228,7 +297,21 @@ class CollectorAgent:
         return mentions
 
     async def _collect_reddit(self, queries: List[str]) -> List[RawMention]:
-        """Collect from Reddit for entertainment subreddits"""
+        """Collect mentions from entertainment-focused subreddits.
+
+        Searches curated list of entertainment subreddits using provided queries.
+        Calculates engagement scores based on post score, comments, and age.
+        Limits queries per subreddit to avoid rate limiting.
+
+        Args:
+            queries: List of search query strings
+
+        Returns:
+            List of raw mentions from Reddit posts
+
+        Note:
+            Uses time-decay scoring where newer posts get higher engagement weights.
+        """
         subreddits = [
             "entertainment", "popculturechat", "Deuxmoi", "blogsnark",
             "thebachelor", "LoveIslandUSA", "BravoRealHousewives",
@@ -265,7 +348,21 @@ class CollectorAgent:
         return mentions
 
     async def _collect_news(self, queries: List[str]) -> List[RawMention]:
-        """Collect from news via SerpAPI"""
+        """Collect news articles using SerpAPI Google News search.
+
+        Searches Google News for each query with entertainment focus.
+        Filters results to whitelisted domains and calculates engagement
+        scores based on search result position.
+
+        Args:
+            queries: List of search query strings
+
+        Returns:
+            List of raw mentions from news articles
+
+        Note:
+            Only includes results from domains in WHITELIST_DOMAINS.
+        """
         mentions = []
 
         for query in queries:
@@ -300,7 +397,21 @@ class CollectorAgent:
         return mentions
 
     async def _collect_entertainment_sites(self, session: aiohttp.ClientSession) -> List[RawMention]:
-        """Collect from all registered entertainment site collectors"""
+        """Collect from specialized entertainment site collectors.
+
+        Runs all registered collectors from the collectors module in parallel.
+        Each collector targets specific entertainment websites and implements
+        domain-specific scraping logic.
+
+        Args:
+            session: Async HTTP session for making requests
+
+        Returns:
+            Combined list of mentions from all entertainment site collectors
+
+        Note:
+            Individual collector failures don't stop other collectors.
+        """
         from collectors import registry
 
         all_mentions: List[RawMention] = []
@@ -319,7 +430,21 @@ class CollectorAgent:
         return all_mentions
 
     async def _add_embeddings(self, mentions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Add OpenAI embeddings to mentions"""
+        """Add vector embeddings to mentions for similarity analysis.
+
+        Generates OpenAI embeddings for each mention's title and body text
+        (truncated to 500 chars). Failed embeddings are set to None to allow
+        graceful degradation.
+
+        Args:
+            mentions: List of mention dictionaries to enrich
+
+        Returns:
+            List of mentions with 'embedding' field added
+
+        Note:
+            Individual embedding failures are logged but don't stop processing.
+        """
         for mention in mentions:
             try:
                 text = f"{mention['title']} {mention['body'][:500]}"
@@ -333,7 +458,15 @@ class CollectorAgent:
 
 
 async def main() -> None:
-    """Run the collector agent"""
+    """Run the collector agent pipeline.
+
+    Entry point for running the complete data collection pipeline.
+    Creates a CollectorAgent instance and executes the full collection,
+    validation, deduplication, and storage workflow.
+
+    Example:
+        >>> await main()
+    """
     agent = CollectorAgent()
     await agent.run()
 

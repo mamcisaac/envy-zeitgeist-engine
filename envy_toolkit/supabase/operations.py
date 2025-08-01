@@ -106,7 +106,7 @@ class SupabaseOperations:
 
                 with LogContext(operation="bulk_insert_mentions", count=len(mentions)):
                     logger.info(f"Successfully inserted {affected} mentions")
-                    get_metrics_collector().record_value("mentions_inserted", affected)
+                    get_metrics_collector().observe_histogram("mentions_inserted", affected)
 
         except (RetryExhaustedError, CircuitBreakerOpenError) as e:
             logger.error(f"Bulk insert failed after retries: {e}")
@@ -237,7 +237,7 @@ class SupabaseOperations:
                     use_transaction=True
                 )
                 if records:
-                    return records[0]["id"]
+                    return records[0]["id"]  # type: ignore[no-any-return]
                 return None
         except (RetryExhaustedError, CircuitBreakerOpenError) as e:
             logger.error(f"Failed to insert trending topic: {e}")

@@ -25,7 +25,23 @@ from envy_toolkit.schema import (
 
 
 class ZeitgeistAgent:
-    """Analyzes collected mentions to identify and score trending topics"""
+    """Analyzes collected mentions to identify and score trending topics.
+
+    Uses machine learning clustering (HDBSCAN) and time series forecasting (ARIMA)
+    to identify trending topics from collected mentions. Generates comprehensive
+    briefs in multiple formats (daily, weekly, email) for different audiences.
+
+    Attributes:
+        supabase: Database client for data access
+        llm: LLM client for generating topic summaries
+        min_cluster_size: Minimum mentions required to form a cluster
+        trend_threshold: Minimum score threshold for trending topics
+
+    Example:
+        >>> agent = ZeitgeistAgent()
+        >>> await agent.run()  # Analyze recent mentions
+        >>> brief = await agent.generate_daily_brief()
+    """
 
     def __init__(self) -> None:
         self.supabase = SupabaseClient()
@@ -34,7 +50,24 @@ class ZeitgeistAgent:
         self.trend_threshold = 0.7
 
     async def run(self) -> None:
-        """Main zeitgeist analysis pipeline"""
+        """Execute the complete zeitgeist analysis pipeline.
+
+        Retrieves recent mentions, clusters them by topic using HDBSCAN,
+        scores clusters based on engagement and cross-platform presence,
+        forecasts trend timing using ARIMA, and creates trending topic
+        summaries for top trends.
+
+        The pipeline includes:
+        1. Fetch recent mentions (24 hours)
+        2. Cluster mentions by topic similarity
+        3. Score clusters by engagement and momentum
+        4. Forecast peak timing for trends
+        5. Generate LLM summaries for top trends
+        6. Store trending topics to database
+
+        Note:
+            Requires at least 10 mentions for meaningful analysis.
+        """
         logger.info("Starting ZeitgeistAgent run")
 
         # Get recent mentions
@@ -72,7 +105,21 @@ class ZeitgeistAgent:
         logger.info(f"Created {len(top_trends)} trending topics")
 
     def _cluster_mentions(self, mentions: List[Dict[str, Any]]) -> List[List[str]]:
-        """Cluster mentions using HDBSCAN on TF-IDF vectors"""
+        """Cluster mentions using HDBSCAN on TF-IDF vectors.
+
+        Uses TF-IDF vectorization to convert text content into numerical vectors,
+        then applies HDBSCAN clustering to group similar mentions together.
+        Filters out noise points (label -1) and returns only meaningful clusters.
+
+        Args:
+            mentions: List of mention dictionaries with 'title' and 'body' fields
+
+        Returns:
+            List of clusters, where each cluster is a list of mention IDs
+
+        Note:
+            Requires minimum cluster size specified in self.min_cluster_size.
+        """
         # Prepare text data
         texts = [f"{m['title']} {m['body'][:500]}" for m in mentions]
 
@@ -107,7 +154,23 @@ class ZeitgeistAgent:
 
     def _score_clusters(self, clusters: List[List[str]],
                        mentions: List[Dict[str, Any]]) -> List[Tuple[List[str], float]]:
-        """Score clusters based on engagement, growth, and cross-platform presence"""
+        """Score topic clusters based on multiple engagement factors.
+
+        Calculates composite scores considering:
+        - Time-weighted engagement (newer content weighted higher)
+        - Cross-platform presence multiplier
+        - Raw engagement metrics (likes, comments, shares)
+
+        Args:
+            clusters: List of mention ID clusters
+            mentions: All mentions with metadata
+
+        Returns:
+            List of tuples containing (cluster_ids, score) sorted by score
+
+        Note:
+            Uses 6-hour time decay for momentum scoring.
+        """
         scored = []
 
         for cluster_ids in clusters:
@@ -138,7 +201,23 @@ class ZeitgeistAgent:
 
     async def _forecast_trends(self, scored_clusters: List[Tuple[List[str], float]],
                               mentions: List[Dict[str, Any]]) -> List[Tuple[List[str], float, str]]:
-        """Forecast peak timing for trends using ARIMA"""
+        """Forecast trend peak timing using ARIMA time series analysis.
+
+        Creates hourly time series of engagement data and fits ARIMA(1,1,1)
+        models to predict when trends will peak. Only processes clusters
+        above the trend threshold.
+
+        Args:
+            scored_clusters: Clusters with their engagement scores
+            mentions: All mentions with timestamp data
+
+        Returns:
+            List of tuples containing (cluster_ids, score, forecast_text)
+
+        Note:
+            Requires minimum 6 hourly data points for ARIMA fitting.
+            Falls back to "Trending upward" if forecasting fails.
+        """
         results = []
 
         for cluster_ids, score in scored_clusters:
@@ -184,7 +263,26 @@ class ZeitgeistAgent:
 
     async def _create_trending_topic(self, cluster_mentions: List[Dict[str, Any]],
                                    score: float, forecast: str) -> TrendingTopic:
-        """Generate trending topic summary using LLM"""
+        """Generate a comprehensive trending topic summary using LLM.
+
+        Creates structured summaries including:
+        - Catchy headline (max 100 chars)
+        - TL;DR summary (2-3 sentences)
+        - Suggested interview guests
+        - Sample interview questions
+        - Key entities and engagement metrics
+
+        Args:
+            cluster_mentions: All mentions in the topic cluster
+            score: Calculated trend score
+            forecast: Peak timing forecast text
+
+        Returns:
+            TrendingTopic object with all summary fields populated
+
+        Note:
+            Falls back to basic summary if LLM JSON parsing fails.
+        """
         # Prepare context
         sample_titles = [m['title'] for m in cluster_mentions[:5]]
         sources = list(set(m['source'] for m in cluster_mentions))
@@ -272,12 +370,10 @@ Format as JSON with keys: headline, tl_dr, guests, sample_questions"""
 
         logger.info(f"Found {len(trending_topics)} trending topics for brief generation")
 
-        # Convert to TrendingTopic objects if needed
+        # Convert to TrendingTopic objects
         topic_objects: List[TrendingTopic] = []
-        if trending_topics and isinstance(trending_topics[0], dict):
+        if trending_topics:
             topic_objects = [TrendingTopic(**topic) for topic in trending_topics]
-        else:
-            topic_objects = trending_topics  # type: ignore[assignment]
 
         # Select appropriate template
         template = self._get_template(config)
@@ -314,7 +410,20 @@ Format as JSON with keys: headline, tl_dr, guests, sample_questions"""
         return brief
 
     def _get_template(self, config: BriefConfig) -> Any:
-        """Get appropriate template based on configuration."""
+        """Get appropriate template based on brief configuration.
+
+        Selects the correct template class based on the brief type specified
+        in the configuration. Each template type has specialized formatting.
+
+        Args:
+            config: Brief configuration specifying the desired template type
+
+        Returns:
+            Template instance for generating the specified brief type
+
+        Raises:
+            ValueError: If brief type is not supported
+        """
         if config.brief_type == BriefType.DAILY:
             return DailyBriefTemplate()
         elif config.brief_type == BriefType.WEEKLY:
@@ -327,7 +436,24 @@ Format as JSON with keys: headline, tl_dr, guests, sample_questions"""
             raise ValueError(f"Unsupported brief type: {config.brief_type}")
 
     def _generate_title(self, config: BriefConfig, date: datetime) -> str:
-        """Generate appropriate title for brief."""
+        """Generate appropriate title for brief based on type and date.
+
+        Creates formatted titles following consistent patterns for each brief type.
+        Uses custom title from config if provided, otherwise generates based on
+        brief type and date information.
+
+        Args:
+            config: Brief configuration containing title preferences
+            date: Date to include in the generated title
+
+        Returns:
+            Formatted title string appropriate for the brief type
+
+        Example:
+            >>> config = BriefConfig(brief_type=BriefType.DAILY)
+            >>> title = agent._generate_title(config, datetime(2024, 1, 15))
+            >>> print(title)  # "Daily Zeitgeist Brief - January 15, 2024"
+        """
         if config.title:
             return config.title
 
@@ -424,7 +550,15 @@ Format as JSON with keys: headline, tl_dr, guests, sample_questions"""
 
 
 async def main() -> None:
-    """Run the zeitgeist agent"""
+    """Run the zeitgeist analysis pipeline.
+
+    Entry point for executing the complete zeitgeist analysis workflow.
+    Creates a ZeitgeistAgent instance and runs the full pipeline to
+    identify and analyze trending topics.
+
+    Example:
+        >>> await main()
+    """
     agent = ZeitgeistAgent()
     await agent.run()
 

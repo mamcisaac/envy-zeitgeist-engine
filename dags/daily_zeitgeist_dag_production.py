@@ -80,13 +80,18 @@ def check_data_quality(**context: Any) -> None:
     if collector_logs and "ERROR" in str(collector_logs):
         raise ValueError("Collector task had errors - check logs")
 
-    print("Data quality check passed")
+    # Log success through Airflow's logging system
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("Data quality check passed")
 
 # SLA miss callback
 def sla_miss_callback(dag: Any, task_list: Any, blocking_task_list: Any,
                      slas: Any, blocking_tis: Any) -> None:
     """Alert when SLA is missed."""
-    print(f"SLA missed for DAG {dag.dag_id}")
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.error(f"SLA missed for DAG {dag.dag_id}")
     # In production: Send alerts via Slack/PagerDuty
 
 # Default arguments

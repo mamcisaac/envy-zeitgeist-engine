@@ -1,3 +1,11 @@
+"""
+Schema definitions for the Envy Zeitgeist Engine.
+
+This module defines all Pydantic models used throughout the system for
+data validation, serialization, and API contracts. Includes models for
+raw mentions, trending topics, briefs, and scheduling configurations.
+"""
+
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -6,6 +14,24 @@ from pydantic import BaseModel, Field
 
 
 class RawMention(BaseModel):
+    """
+    Raw mention collected from social media or news sources.
+
+    Represents a single piece of content (post, article, video) that mentions
+    celebrities or entertainment topics. Used as the input data for zeitgeist analysis.
+
+    Example:
+        >>> mention = RawMention(
+        ...     id="abc123",
+        ...     source="twitter",
+        ...     url="https://twitter.com/user/status/123",
+        ...     title="Breaking celebrity news",
+        ...     body="Celebrity spotted at...",
+        ...     timestamp=datetime.utcnow(),
+        ...     platform_score=0.85,
+        ...     entities=["Celebrity Name"]
+        ... )
+    """
     id: str = Field(..., description="SHA-256 hash of URL for deduplication")
     source: str = Field(..., description="Platform: reddit | twitter | tiktok | news | youtube")
     url: str = Field(..., description="Direct link to the content")
@@ -19,6 +45,22 @@ class RawMention(BaseModel):
 
 
 class TrendingTopic(BaseModel):
+    """
+    Analyzed trending topic generated from clustered mentions.
+
+    Represents a trending topic identified by the zeitgeist analysis pipeline.
+    Includes LLM-generated summary, forecast, and suggested interview content.
+
+    Example:
+        >>> topic = TrendingTopic(
+        ...     headline="Celebrity Breakup Trending",
+        ...     tl_dr="Multiple sources reporting celebrity couple split",
+        ...     score=0.92,
+        ...     forecast="Peak in 3-6 hours",
+        ...     guests=["Entertainment Reporter"],
+        ...     sample_questions=["What led to this breakup?"]
+        ... )
+    """
     id: Optional[int] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     headline: str = Field(..., description="Catchy trend summary")
@@ -46,7 +88,20 @@ class BriefFormat(str, Enum):
 
 
 class BriefConfig(BaseModel):
-    """Configuration for brief generation."""
+    """
+    Configuration for brief generation.
+
+    Defines parameters for generating different types of briefs from trending topics.
+    Controls content selection, formatting, and output options.
+
+    Example:
+        >>> config = BriefConfig(
+        ...     brief_type=BriefType.DAILY,
+        ...     max_topics=10,
+        ...     include_charts=True,
+        ...     sections=["summary", "trending", "interviews"]
+        ... )
+    """
     brief_type: BriefType = Field(..., description="Type of brief to generate")
     format: BriefFormat = Field(default=BriefFormat.MARKDOWN, description="Output format")
     max_topics: int = Field(default=10, ge=1, le=50, description="Maximum topics to include")
@@ -60,7 +115,23 @@ class BriefConfig(BaseModel):
 
 
 class GeneratedBrief(BaseModel):
-    """A generated brief with metadata."""
+    """
+    A generated brief with metadata.
+
+    Represents a completed brief generated from trending topics data.
+    Includes the formatted content, generation metadata, and configuration used.
+
+    Example:
+        >>> brief = GeneratedBrief(
+        ...     brief_type=BriefType.DAILY,
+        ...     format=BriefFormat.MARKDOWN,
+        ...     title="Daily Zeitgeist Brief - Jan 1, 2024",
+        ...     content="# Daily Brief\n\n## Top Trends\n...",
+        ...     topics_count=5,
+        ...     date_start=datetime(2024, 1, 1, 0, 0, 0),
+        ...     date_end=datetime(2024, 1, 1, 23, 59, 59)
+        ... )
+    """
     id: Optional[int] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     brief_type: BriefType = Field(..., description="Type of brief")
@@ -75,7 +146,21 @@ class GeneratedBrief(BaseModel):
 
 
 class ScheduledBrief(BaseModel):
-    """Configuration for scheduled brief generation."""
+    """
+    Configuration for scheduled brief generation.
+
+    Defines automated brief generation schedules with cron expressions,
+    email delivery, and webhook notifications.
+
+    Example:
+        >>> schedule = ScheduledBrief(
+        ...     name="Daily Morning Brief",
+        ...     brief_config=BriefConfig(brief_type=BriefType.DAILY),
+        ...     schedule_cron="0 8 * * *",  # Daily at 8 AM
+        ...     email_recipients=["editor@example.com"],
+        ...     webhook_url="https://api.slack.com/webhook/123"
+        ... )
+    """
     id: Optional[int] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     name: str = Field(..., description="Schedule name")
@@ -89,10 +174,50 @@ class ScheduledBrief(BaseModel):
 
 
 class CollectorMixin:
-    """Helper mixin for consistent mention creation across collectors"""
+    """
+    Helper mixin for consistent mention creation across collectors.
+
+    Provides utility methods for data collectors to create properly
+    formatted RawMention objects with automatic ID generation.
+
+    Example:
+        >>> class MyCollector(CollectorMixin):
+        ...     def collect_data(self):
+        ...         mention = self.create_mention(
+        ...             source="twitter",
+        ...             url="https://twitter.com/user/status/123",
+        ...             title="Breaking news",
+        ...             body="Celebrity spotted...",
+        ...             timestamp=datetime.utcnow(),
+        ...             platform_score=0.8
+        ...         )
+        ...         return mention
+    """
 
     @staticmethod
     def create_mention(**kwargs: Any) -> RawMention:
+        """
+        Create a RawMention with automatic ID generation.
+
+        Generates SHA-256 hash of URL for the ID if not provided.
+        Ensures consistent mention creation across all collectors.
+
+        Args:
+            **kwargs: Keyword arguments for RawMention fields
+
+        Returns:
+            RawMention object with auto-generated ID if not provided
+
+        Example:
+            >>> mention = CollectorMixin.create_mention(
+            ...     source="reddit",
+            ...     url="https://reddit.com/r/sub/post/123",
+            ...     title="Celebrity discussion",
+            ...     body="What do you think about...",
+            ...     timestamp=datetime.utcnow(),
+            ...     platform_score=0.65
+            ... )
+        """
         import hashlib
         if 'id' not in kwargs and 'url' in kwargs:
             kwargs['id'] = hashlib.sha256(kwargs['url'].encode()).hexdigest()
