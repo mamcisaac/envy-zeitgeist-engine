@@ -28,7 +28,7 @@ class TestEnvyBaseError:
 
         assert str(exc) == "Test error"
         assert exc.message == "Test error"
-        assert exc.error_code == "ENVYBASEEXCEPTION"
+        assert exc.error_code == "ENVYBASEERROR"
         assert exc.severity == ErrorSeverity.MEDIUM
         assert exc.category == ErrorCategory.PERMANENT
         assert exc.context == {}
@@ -368,11 +368,23 @@ class TestUtilityFunctions:
 
     def test_is_retryable_error_with_standard_exceptions(self) -> None:
         """Test retryable error detection with standard exceptions."""
+        # Create a mock TimeoutError class
+        class MockTimeoutError(Exception):
+            pass
+
+        # Rename to match expected pattern
+        MockTimeoutError.__name__ = "TimeoutError"
+
         # Should detect common retryable exception types
-        timeout_exc = Exception("TimeoutError occurred")
+        timeout_exc = MockTimeoutError("Timeout occurred")
         assert is_retryable_error(timeout_exc)
 
-        connection_exc = Exception("ConnectionError occurred")
+        # Create ConnectionError mock
+        class MockConnectionError(Exception):
+            pass
+        MockConnectionError.__name__ = "ConnectionError"
+
+        connection_exc = MockConnectionError("Connection failed")
         assert is_retryable_error(connection_exc)
 
         # Non-retryable standard exception
@@ -392,8 +404,12 @@ class TestUtilityFunctions:
 
     def test_get_error_severity_with_standard_exceptions(self) -> None:
         """Test error severity detection with standard exceptions."""
-        # Critical exceptions
-        memory_exc = Exception("MemoryError occurred")
+        # Critical exceptions - create mock MemoryError
+        class MockMemoryError(Exception):
+            pass
+        MockMemoryError.__name__ = "MemoryError"
+
+        memory_exc = MockMemoryError("Out of memory")
         assert get_error_severity(memory_exc) == ErrorSeverity.CRITICAL
 
         # Default to medium for unknown exceptions

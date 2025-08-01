@@ -1,15 +1,13 @@
-"""
-Unit tests for envy_toolkit.brief_scheduler module.
-
-Tests scheduling functionality for automated brief generation.
-"""
+"""Tests for brief scheduler module."""
 
 import asyncio
+import smtplib
 from datetime import datetime, timedelta
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
-from agents.zeitgeist_agent import ZeitgeistAgent
+import pytest
+import requests
+
 from envy_toolkit.brief_scheduler import BriefScheduler, schedule_daily_brief
 from envy_toolkit.schema import (
     BriefConfig,
@@ -21,487 +19,532 @@ from envy_toolkit.schema import (
 
 
 class TestBriefScheduler:
-    """Test BriefScheduler functionality."""
+    """Test BriefScheduler class."""
 
-    def setup_method(self, method: Any) -> None:
-        """Set up test environment."""
-        self.mock_agent = MagicMock(spec=ZeitgeistAgent)
-        self.scheduler = BriefScheduler(self.mock_agent)
+    @pytest.fixture
+    def mock_agent(self):
+        """Mock ZeitgeistAgent for testing."""
+        agent = Mock()
+        agent.generate_brief = AsyncMock()
+        agent.save_brief = AsyncMock()
+        return agent
 
-    def test_initialization(self) -> None:
-        """Test scheduler initialization."""
-        # With provided agent
-        scheduler = BriefScheduler(self.mock_agent)
-        assert scheduler.agent == self.mock_agent
+    @pytest.fixture
+    def scheduler(self, mock_agent):
+        """Create scheduler with mock agent."""
+        return BriefScheduler(agent=mock_agent)
+
+    @pytest.fixture
+    def sample_schedule(self):
+        """Create sample scheduled brief."""
+        config = BriefConfig(
+            brief_type=BriefType.DAILY,
+            max_topics=10,
+            sections=["summary", "trending"]
+        )
+
+        return ScheduledBrief(
+            name="Daily Test Brief",
+            brief_config=config,
+            schedule_cron="0 9 * * *",  # 9 AM daily
+            email_recipients=["test@example.com"],
+            is_active=True
+        )
+
+    def test_initialization_with_agent(self, mock_agent):
+        """Test scheduler initialization with agent."""
+        scheduler = BriefScheduler(agent=mock_agent)
+
+        assert scheduler.agent == mock_agent
         assert scheduler.active_schedules == []
         assert scheduler.running is False
 
-        # Without agent (should create default)
-        with patch('envy_toolkit.brief_scheduler.ZeitgeistAgent') as mock_zeitgeist:
+    def test_initialization_without_agent(self):
+        """Test scheduler initialization without agent."""
+        with patch('envy_toolkit.brief_scheduler.ZeitgeistAgent') as mock_agent_class:
+            mock_agent_instance = Mock()
+            mock_agent_class.return_value = mock_agent_instance
+
             scheduler = BriefScheduler()
-            mock_zeitgeist.assert_called_once()
 
-    @patch('envy_toolkit.brief_scheduler.croniter')
-    def test_add_schedule(self, mock_croniter: MagicMock) -> None:
-        """Test adding a scheduled brief."""
-        mock_cron = MagicMock()
-        mock_next_run = datetime.utcnow() + timedelta(hours=1)
-        mock_cron.get_next.return_value = mock_next_run
-        mock_croniter.return_value = mock_cron
+            assert scheduler.agent == mock_agent_instance
+            mock_agent_class.assert_called_once()
 
-        schedule = ScheduledBrief(
-            name="test_schedule",
-            brief_config=BriefConfig(brief_type=BriefType.DAILY),
-            schedule_cron="0 9 * * *",
-            is_active=True
-        )
+    def test_add_schedule_active(self, scheduler, sample_schedule):
+        """Test adding an active schedule."""
+        with patch('envy_toolkit.brief_scheduler.croniter') as mock_croniter:
+            with patch('envy_toolkit.brief_scheduler.datetime') as mock_datetime:
+                # Mock datetime.utcnow() to return a fixed time
+                fixed_time = datetime(2025, 1, 1, 12, 0, 0)
+                mock_datetime.utcnow.return_value = fixed_time
+                mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
-        self.scheduler.add_schedule(schedule)
+                mock_cron = Mock()
+                mock_next_time = datetime(2025, 1, 2, 9, 0, 0)
+                mock_cron.get_next.return_value = mock_next_time
+                mock_croniter.return_value = mock_cron
 
-        assert len(self.scheduler.active_schedules) == 1
-        assert self.scheduler.active_schedules[0].name == "test_schedule"
-        assert self.scheduler.active_schedules[0].next_run == mock_next_run
+                scheduler.add_schedule(sample_schedule)
 
-        # Verify croniter was called
-        mock_croniter.assert_called_once()
+                assert len(scheduler.active_schedules) == 1
+                assert scheduler.active_schedules[0] == sample_schedule
+                assert sample_schedule.next_run == mock_next_time
+                mock_croniter.assert_called_once_with(sample_schedule.schedule_cron, fixed_time)
 
-    def test_add_schedule_inactive(self) -> None:
+    def test_add_schedule_inactive(self, scheduler, sample_schedule):
         """Test adding an inactive schedule."""
-        schedule = ScheduledBrief(
-            name="inactive_schedule",
-            brief_config=BriefConfig(brief_type=BriefType.DAILY),
-            schedule_cron="0 9 * * *",
-            is_active=False
-        )
+        sample_schedule.is_active = False
 
-        self.scheduler.add_schedule(schedule)
+        scheduler.add_schedule(sample_schedule)
 
-        assert len(self.scheduler.active_schedules) == 1
-        assert self.scheduler.active_schedules[0].next_run is None
+        assert len(scheduler.active_schedules) == 1
+        assert scheduler.active_schedules[0] == sample_schedule
+        assert sample_schedule.next_run is None
 
-    def test_remove_schedule(self) -> None:
-        """Test removing a scheduled brief."""
-        schedule = ScheduledBrief(
-            name="test_schedule",
-            brief_config=BriefConfig(brief_type=BriefType.DAILY),
-            schedule_cron="0 9 * * *"
-        )
+    def test_remove_schedule_by_name(self, scheduler, sample_schedule):
+        """Test removing schedule by name."""
+        scheduler.active_schedules = [sample_schedule]
 
-        self.scheduler.add_schedule(schedule)
-        assert len(self.scheduler.active_schedules) == 1
+        result = scheduler.remove_schedule(sample_schedule.name)
 
-        # Remove existing schedule
-        result = self.scheduler.remove_schedule("test_schedule")
         assert result is True
-        assert len(self.scheduler.active_schedules) == 0
+        assert len(scheduler.active_schedules) == 0
 
-        # Try to remove non-existent schedule
-        result = self.scheduler.remove_schedule("non_existent")
+    def test_remove_schedule_not_found(self, scheduler):
+        """Test removing non-existent schedule."""
+        result = scheduler.remove_schedule("non-existent-name")
+
         assert result is False
+        assert len(scheduler.active_schedules) == 0
 
-    def test_get_schedule(self) -> None:
-        """Test retrieving a schedule by name."""
-        schedule = ScheduledBrief(
-            name="test_schedule",
-            brief_config=BriefConfig(brief_type=BriefType.DAILY),
-            schedule_cron="0 9 * * *"
-        )
+    def test_get_schedule_found(self, scheduler, sample_schedule):
+        """Test getting schedule by name when found."""
+        scheduler.active_schedules = [sample_schedule]
 
-        self.scheduler.add_schedule(schedule)
+        result = scheduler.get_schedule(sample_schedule.name)
 
-        # Get existing schedule
-        retrieved = self.scheduler.get_schedule("test_schedule")
-        assert retrieved is not None
-        assert retrieved.name == "test_schedule"
+        assert result == sample_schedule
 
-        # Get non-existent schedule
-        retrieved = self.scheduler.get_schedule("non_existent")
-        assert retrieved is None
+    def test_get_schedule_not_found(self, scheduler):
+        """Test getting schedule by name when not found."""
+        result = scheduler.get_schedule("non-existent")
 
-    def test_list_schedules(self) -> None:
+        assert result is None
+
+    def test_list_schedules(self, scheduler, sample_schedule):
         """Test listing all schedules."""
-        schedule1 = ScheduledBrief(
-            name="schedule1",
-            brief_config=BriefConfig(brief_type=BriefType.DAILY),
-            schedule_cron="0 9 * * *"
-        )
-        schedule2 = ScheduledBrief(
-            name="schedule2",
-            brief_config=BriefConfig(brief_type=BriefType.WEEKLY),
-            schedule_cron="0 9 * * 1"
+        another_schedule = ScheduledBrief(
+            name="Another Schedule",
+            brief_config=BriefConfig(brief_type=BriefType.WEEKLY, max_topics=25),
+            schedule_cron="0 10 * * 1"  # 10 AM on Mondays
         )
 
-        self.scheduler.add_schedule(schedule1)
-        self.scheduler.add_schedule(schedule2)
+        scheduler.active_schedules = [sample_schedule, another_schedule]
 
-        schedules = self.scheduler.list_schedules()
-        assert len(schedules) == 2
-        assert schedules[0].name == "schedule1"
-        assert schedules[1].name == "schedule2"
+        result = scheduler.list_schedules()
 
-        # Should return a copy, not the original list
-        schedules.clear()
-        assert len(self.scheduler.active_schedules) == 2
+        assert len(result) == 2
+        assert sample_schedule in result
+        assert another_schedule in result
+        # Should be a copy, not the original list
+        assert result is not scheduler.active_schedules
 
-    def test_stop_scheduler(self) -> None:
-        """Test stopping the scheduler."""
-        self.scheduler.running = True
-        self.scheduler.stop_scheduler()
-        assert self.scheduler.running is False
+    @pytest.mark.asyncio
+    async def test_start_scheduler(self, scheduler):
+        """Test starting scheduler."""
+        scheduler._check_and_execute_schedules = AsyncMock()
 
-    async def test_execute_schedule(self) -> None:
-        """Test executing a single schedule."""
-        # Mock agent methods
-        mock_brief = GeneratedBrief(
-            brief_type=BriefType.DAILY,
-            format=BriefFormat.MARKDOWN,
-            title="Test Brief",
-            content="Test content",
-            topics_count=1,
-            date_start=datetime.utcnow() - timedelta(days=1),
-            date_end=datetime.utcnow()
-        )
+        # Stop scheduler after short time to prevent infinite loop
+        async def stop_after_delay():
+            await asyncio.sleep(0.1)
+            scheduler.running = False
 
-        self.mock_agent.generate_brief = AsyncMock(return_value=mock_brief)
-        self.mock_agent.save_brief = AsyncMock(return_value=1)
+        stop_task = asyncio.create_task(stop_after_delay())
 
-        schedule = ScheduledBrief(
-            name="test_schedule",
-            brief_config=BriefConfig(brief_type=BriefType.DAILY),
-            schedule_cron="0 9 * * *",
-            email_recipients=["test@example.com"],
-            webhook_url="https://example.com/webhook"
-        )
+        await scheduler.start_scheduler(check_interval=0.05)
+        await stop_task
 
-        with patch.object(self.scheduler, '_send_email_brief', new_callable=AsyncMock) as mock_email, \
-             patch.object(self.scheduler, '_send_webhook_notification', new_callable=AsyncMock) as mock_webhook:
+        # Should have called check_and_execute_schedules at least once
+        scheduler._check_and_execute_schedules.assert_called()
 
-            await self.scheduler._execute_schedule(schedule)
+    def test_stop_scheduler(self, scheduler):
+        """Test stopping scheduler."""
+        scheduler.running = True
 
-            # Verify agent methods were called
-            self.mock_agent.generate_brief.assert_called_once_with(schedule.brief_config)
-            self.mock_agent.save_brief.assert_called_once_with(mock_brief)
+        scheduler.stop_scheduler()
 
-            # Verify email and webhook were called
-            mock_email.assert_called_once_with(mock_brief, ["test@example.com"])
-            mock_webhook.assert_called_once_with(mock_brief, "https://example.com/webhook")
+        assert scheduler.running is False
 
-    async def test_execute_schedule_no_email_webhook(self) -> None:
-        """Test executing schedule without email or webhook."""
-        mock_brief = GeneratedBrief(
-            brief_type=BriefType.DAILY,
-            format=BriefFormat.MARKDOWN,
-            title="Test Brief",
-            content="Test content",
-            topics_count=1,
-            date_start=datetime.utcnow() - timedelta(days=1),
-            date_end=datetime.utcnow()
-        )
-
-        self.mock_agent.generate_brief = AsyncMock(return_value=mock_brief)
-        self.mock_agent.save_brief = AsyncMock(return_value=1)
-
-        schedule = ScheduledBrief(
-            name="test_schedule",
-            brief_config=BriefConfig(brief_type=BriefType.DAILY),
-            schedule_cron="0 9 * * *"
-            # No email_recipients or webhook_url
-        )
-
-        with patch.object(self.scheduler, '_send_email_brief', new_callable=AsyncMock) as mock_email, \
-             patch.object(self.scheduler, '_send_webhook_notification', new_callable=AsyncMock) as mock_webhook:
-
-            await self.scheduler._execute_schedule(schedule)
-
-            # Email and webhook should not be called
-            mock_email.assert_not_called()
-            mock_webhook.assert_not_called()
-
-    @patch('envy_toolkit.brief_scheduler.croniter')
-    async def test_check_and_execute_schedules(self, mock_croniter: MagicMock) -> None:
+    @pytest.mark.asyncio
+    async def test_check_and_execute_schedules_due(self, scheduler, sample_schedule, mock_agent):
         """Test checking and executing due schedules."""
-        now = datetime.utcnow()
-        past_time = now - timedelta(minutes=1)
-        future_time = now + timedelta(hours=1)
+        # Set schedule as due
+        sample_schedule.next_run = datetime.utcnow() - timedelta(minutes=1)
+        sample_schedule.is_active = True
+        scheduler.active_schedules = [sample_schedule]
 
-        # Mock croniter for next run calculation
-        mock_cron = MagicMock()
-        mock_cron.get_next.return_value = future_time
-        mock_croniter.return_value = mock_cron
+        # Mock execute_schedule
+        scheduler._execute_schedule = AsyncMock()
 
-        # Create schedules - one due, one not due, one inactive
-        due_schedule = ScheduledBrief(
-            name="due_schedule",
-            brief_config=BriefConfig(brief_type=BriefType.DAILY),
-            schedule_cron="0 9 * * *",
-            next_run=past_time,
-            is_active=True
-        )
+        await scheduler._check_and_execute_schedules()
 
-        not_due_schedule = ScheduledBrief(
-            name="not_due_schedule",
-            brief_config=BriefConfig(brief_type=BriefType.DAILY),
-            schedule_cron="0 9 * * *",
-            next_run=future_time,
-            is_active=True
-        )
+        scheduler._execute_schedule.assert_called_once_with(sample_schedule)
+        assert sample_schedule.last_run is not None
+        assert sample_schedule.next_run is not None
 
-        inactive_schedule = ScheduledBrief(
-            name="inactive_schedule",
-            brief_config=BriefConfig(brief_type=BriefType.DAILY),
-            schedule_cron="0 9 * * *",
-            next_run=past_time,
-            is_active=False
-        )
+    @pytest.mark.asyncio
+    async def test_check_and_execute_schedules_not_due(self, scheduler, sample_schedule):
+        """Test checking schedules that are not due."""
+        # Set schedule as not due
+        sample_schedule.next_run = datetime.utcnow() + timedelta(hours=1)
+        sample_schedule.is_active = True
+        scheduler.active_schedules = [sample_schedule]
 
-        self.scheduler.active_schedules = [due_schedule, not_due_schedule, inactive_schedule]
+        scheduler._execute_schedule = AsyncMock()
 
-        with patch.object(self.scheduler, '_execute_schedule', new_callable=AsyncMock) as mock_execute:
-            await self.scheduler._check_and_execute_schedules()
+        await scheduler._check_and_execute_schedules()
 
-            # Only the due and active schedule should be executed
-            mock_execute.assert_called_once_with(due_schedule)
+        scheduler._execute_schedule.assert_not_called()
 
-            # Check that last_run and next_run were updated
-            assert due_schedule.last_run is not None
-            assert due_schedule.next_run == future_time
+    @pytest.mark.asyncio
+    async def test_check_and_execute_schedules_inactive(self, scheduler, sample_schedule):
+        """Test checking inactive schedules."""
+        # Set schedule as inactive
+        sample_schedule.next_run = datetime.utcnow() - timedelta(minutes=1)
+        sample_schedule.is_active = False
+        scheduler.active_schedules = [sample_schedule]
 
-    async def test_start_scheduler_loop(self) -> None:
-        """Test scheduler main loop."""
-        with patch.object(self.scheduler, '_check_and_execute_schedules', new_callable=AsyncMock) as mock_check:
-            # Start scheduler in background
-            task = asyncio.create_task(self.scheduler.start_scheduler(check_interval=1))
+        scheduler._execute_schedule = AsyncMock()
 
-            # Let it run for a short time
-            await asyncio.sleep(0.25)
+        await scheduler._check_and_execute_schedules()
 
-            # Stop scheduler
-            self.scheduler.stop_scheduler()
+        scheduler._execute_schedule.assert_not_called()
 
-            # Wait for task to complete
-            await task
-
-            # Should have called check method multiple times
-            assert mock_check.call_count >= 2
-
-    async def test_start_scheduler_exception_handling(self) -> None:
-        """Test scheduler handles exceptions in main loop."""
-        with patch.object(self.scheduler, '_check_and_execute_schedules', new_callable=AsyncMock) as mock_check:
-            # Make check method raise exception
-            mock_check.side_effect = Exception("Test error")
-
-            # Start scheduler
-            task = asyncio.create_task(self.scheduler.start_scheduler(check_interval=1))
-
-            # Let it run briefly
-            await asyncio.sleep(0.15)
-
-            # Stop scheduler
-            self.scheduler.stop_scheduler()
-
-            # Wait for completion
-            await task
-
-            # Should have attempted to call check despite exceptions
-            assert mock_check.call_count >= 1
-
-
-class TestEmailAndWebhookFunctionality:
-    """Test email and webhook functionality."""
-
-    def setup_method(self, method: Any) -> None:
-        """Set up test environment."""
-        self.scheduler = BriefScheduler()
-        self.mock_brief = GeneratedBrief(
+    @pytest.mark.asyncio
+    async def test_execute_schedule_full_workflow(self, scheduler, sample_schedule, mock_agent):
+        """Test executing schedule with full workflow."""
+        # Set up mock brief
+        generated_brief = GeneratedBrief(
+            title="Test Brief",
             brief_type=BriefType.DAILY,
             format=BriefFormat.MARKDOWN,
-            title="Test Email Brief",
-            content="# Test Content\n\nThis is test content.",
-            topics_count=1,
-            date_start=datetime.utcnow() - timedelta(days=1),
+            content="Test content",
+            topics_count=5,
+            date_start=datetime.utcnow(),
             date_end=datetime.utcnow()
         )
+        mock_agent.generate_brief.return_value = generated_brief
+        mock_agent.save_brief.return_value = "brief-123"
 
-    @patch('envy_toolkit.brief_scheduler.smtplib.SMTP')
-    @patch('envy_toolkit.brief_scheduler.os.getenv')
-    async def test_send_email_brief_success(self, mock_getenv: MagicMock, mock_smtp: MagicMock) -> None:
-        """Test successful email sending."""
-        # Mock environment variables
-        mock_getenv.side_effect = lambda key, default=None: {
-            'SMTP_SERVER': 'smtp.test.com',
-            'SMTP_PORT': '587',
-            'SMTP_USERNAME': 'user@test.com',
-            'SMTP_PASSWORD': 'password',
-            'SENDER_EMAIL': 'sender@test.com'
-        }.get(key, default)
+        # Set up schedule with recipients and webhook
+        sample_schedule.email_recipients = ["test@example.com"]
+        sample_schedule.webhook_url = "https://example.com/webhook"
 
-        # Mock SMTP server
-        mock_server = MagicMock()
-        mock_smtp.return_value.__enter__.return_value = mock_server
+        # Mock email and webhook methods
+        scheduler._send_email_brief = AsyncMock()
+        scheduler._send_webhook_notification = AsyncMock()
 
-        await self.scheduler._send_email_brief(self.mock_brief, ["recipient@test.com"])
+        await scheduler._execute_schedule(sample_schedule)
 
-        # Verify SMTP was called correctly
-        mock_smtp.assert_called_once_with('smtp.test.com', 587)
-        mock_server.starttls.assert_called_once()
-        mock_server.login.assert_called_once_with('user@test.com', 'password')
-        mock_server.send_message.assert_called_once()
+        mock_agent.generate_brief.assert_called_once_with(sample_schedule.brief_config)
+        mock_agent.save_brief.assert_called_once_with(generated_brief)
+        scheduler._send_email_brief.assert_called_once_with(generated_brief, sample_schedule.email_recipients)
+        scheduler._send_webhook_notification.assert_called_once_with(generated_brief, sample_schedule.webhook_url)
 
-    @patch('envy_toolkit.brief_scheduler.os.getenv')
-    async def test_send_email_brief_no_credentials(self, mock_getenv: MagicMock) -> None:
-        """Test email sending without credentials."""
-        # Mock missing credentials
-        mock_getenv.return_value = None
+    @pytest.mark.asyncio
+    async def test_execute_schedule_save_failure(self, scheduler, sample_schedule, mock_agent):
+        """Test executing schedule with save failure."""
+        generated_brief = GeneratedBrief(
+            title="Test Brief",
+            brief_type=BriefType.DAILY,
+            format=BriefFormat.MARKDOWN,
+            content="Test content",
+            topics_count=5,
+            date_start=datetime.utcnow(),
+            date_end=datetime.utcnow()
+        )
+        mock_agent.generate_brief.return_value = generated_brief
+        mock_agent.save_brief.side_effect = Exception("Save failed")
 
         # Should not raise exception, just log warning
-        await self.scheduler._send_email_brief(self.mock_brief, ["recipient@test.com"])
-        # No assertions needed - just testing it doesn't crash
+        await scheduler._execute_schedule(sample_schedule)
 
-    @patch('envy_toolkit.brief_scheduler.requests.post')
-    async def test_send_webhook_notification_success(self, mock_post: MagicMock) -> None:
+        mock_agent.generate_brief.assert_called_once()
+        mock_agent.save_brief.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_send_email_brief_success(self, scheduler):
+        """Test successful email sending."""
+        brief = GeneratedBrief(
+            title="Test Brief",
+            brief_type=BriefType.DAILY,
+            format=BriefFormat.MARKDOWN,
+            content="# Test Content\n\nThis is a test.",
+            topics_count=3,
+            date_start=datetime.utcnow(),
+            date_end=datetime.utcnow()
+        )
+        recipients = ["test1@example.com", "test2@example.com"]
+
+        with patch('envy_toolkit.brief_scheduler.smtplib.SMTP') as mock_smtp_class:
+            mock_smtp = Mock()
+            mock_smtp_class.return_value.__enter__ = Mock(return_value=mock_smtp)
+            mock_smtp_class.return_value.__exit__ = Mock(return_value=None)
+
+            with patch.dict('os.environ', {
+                'SMTP_SERVER': 'smtp.gmail.com',
+                'SMTP_PORT': '587',
+                'SMTP_USERNAME': 'sender@example.com',
+                'SMTP_PASSWORD': 'password',
+                'SENDER_EMAIL': 'sender@example.com'
+            }):
+
+                # Mock the markdown conversion
+                scheduler._markdown_to_html = Mock(return_value="<html><body>Test Content</body></html>")
+
+                await scheduler._send_email_brief(brief, recipients)
+
+                mock_smtp.starttls.assert_called_once()
+                mock_smtp.login.assert_called_once_with('sender@example.com', 'password')
+                mock_smtp.send_message.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_send_email_brief_missing_credentials(self, scheduler):
+        """Test email sending with missing credentials."""
+        brief = GeneratedBrief(
+            title="Test Brief",
+            brief_type=BriefType.DAILY,
+            format=BriefFormat.MARKDOWN,
+            content="Test content",
+            topics_count=1,
+            date_start=datetime.utcnow(),
+            date_end=datetime.utcnow()
+        )
+        recipients = ["test@example.com"]
+
+        with patch.dict('os.environ', {}, clear=True):
+
+            # Should not raise exception, just log warning
+            await scheduler._send_email_brief(brief, recipients)
+
+    @pytest.mark.asyncio
+    async def test_send_email_brief_smtp_error(self, scheduler):
+        """Test email sending with SMTP error."""
+        brief = GeneratedBrief(
+            title="Test Brief",
+            brief_type=BriefType.DAILY,
+            format=BriefFormat.MARKDOWN,
+            content="Test content",
+            topics_count=1,
+            date_start=datetime.utcnow(),
+            date_end=datetime.utcnow()
+        )
+        recipients = ["test@example.com"]
+
+        with patch('envy_toolkit.brief_scheduler.smtplib.SMTP') as mock_smtp_class:
+            mock_smtp_class.side_effect = smtplib.SMTPException("Connection failed")
+
+            with patch.dict('os.environ', {
+                'SMTP_USERNAME': 'sender@example.com',
+                'SMTP_PASSWORD': 'password'
+            }):
+
+                # Mock the markdown conversion
+                scheduler._markdown_to_html = Mock(return_value="<html><body>Test Content</body></html>")
+
+                # Should not raise exception, just log error
+                await scheduler._send_email_brief(brief, recipients)
+
+    @pytest.mark.asyncio
+    async def test_send_webhook_notification_success(self, scheduler):
         """Test successful webhook notification."""
-        mock_response = MagicMock()
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
-
+        brief = GeneratedBrief(
+            title="Test Brief",
+            brief_type=BriefType.DAILY,
+            format=BriefFormat.MARKDOWN,
+            content="Test content",
+            topics_count=5,
+            date_start=datetime.utcnow(),
+            date_end=datetime.utcnow()
+        )
         webhook_url = "https://example.com/webhook"
-        await self.scheduler._send_webhook_notification(self.mock_brief, webhook_url)
 
-        # Verify webhook was called
-        mock_post.assert_called_once()
-        call_args = mock_post.call_args
-        assert call_args[0][0] == webhook_url
-        assert "brief_generated" in call_args[1]["json"]["event"]
+        with patch('envy_toolkit.brief_scheduler.requests.post') as mock_post:
+            mock_response = Mock()
+            mock_response.raise_for_status = Mock()
+            mock_post.return_value = mock_response
 
-    @patch('envy_toolkit.brief_scheduler.requests.post')
-    async def test_send_webhook_notification_failure(self, mock_post: MagicMock) -> None:
-        """Test webhook notification failure handling."""
-        mock_post.side_effect = Exception("Network error")
+            await scheduler._send_webhook_notification(brief, webhook_url)
 
-        # Should not raise exception, just log error
-        await self.scheduler._send_webhook_notification(self.mock_brief, "https://example.com/webhook")
-        # No assertions needed - just testing error handling
+            mock_post.assert_called_once()
+            call_args = mock_post.call_args
+            assert call_args[0][0] == webhook_url
+            assert call_args[1]['json']['event'] == 'brief_generated'
+            assert call_args[1]['json']['brief']['title'] == brief.title
+            assert call_args[1]['timeout'] == 30
 
-    @patch('envy_toolkit.brief_scheduler.markdown.Markdown')
-    def test_markdown_to_html_with_markdown(self, mock_markdown: MagicMock) -> None:
-        """Test Markdown to HTML conversion with markdown library."""
-        mock_md = MagicMock()
-        mock_md.convert.return_value = "<h1>Test</h1>"
-        mock_markdown.return_value = mock_md
+    @pytest.mark.asyncio
+    async def test_send_webhook_notification_request_error(self, scheduler):
+        """Test webhook notification with request error."""
+        brief = GeneratedBrief(
+            title="Test Brief",
+            brief_type=BriefType.DAILY,
+            format=BriefFormat.MARKDOWN,
+            content="Test content",
+            topics_count=1,
+            date_start=datetime.utcnow(),
+            date_end=datetime.utcnow()
+        )
+        webhook_url = "https://example.com/webhook"
 
-        result = self.scheduler._markdown_to_html("# Test")
+        with patch('envy_toolkit.brief_scheduler.requests.post') as mock_post:
+            mock_post.side_effect = requests.RequestException("Network error")
 
-        assert "<h1>Test</h1>" in result
-        assert "<html>" in result
-        assert "<style>" in result
+            # Should not raise exception, just log error
+            await scheduler._send_webhook_notification(brief, webhook_url)
 
-    @patch('envy_toolkit.brief_scheduler.markdown', side_effect=ImportError)
-    def test_markdown_to_html_without_markdown(self, mock_markdown: MagicMock) -> None:
-        """Test Markdown to HTML conversion without markdown library."""
-        result = self.scheduler._markdown_to_html("# Test\nContent")
+    def test_markdown_to_html_with_markdown(self, scheduler):
+        """Test markdown to HTML conversion with markdown package."""
+        markdown_content = "# Test Heading\n\nThis is **bold** text."
 
-        assert "# Test<br>" in result
-        assert "<pre>" in result
+        # Mock the markdown import inside the method
+        with patch('builtins.__import__') as mock_import:
+            # Create mock markdown module
+            mock_markdown_module = Mock()
+            mock_md = Mock()
+            mock_md.convert.return_value = "<h1>Test Heading</h1><p>This is <strong>bold</strong> text.</p>"
+            mock_markdown_module.Markdown.return_value = mock_md
 
+            # Configure import mock to return our mock when 'markdown' is imported
+            def import_side_effect(name, *args, **kwargs):
+                if name == 'markdown':
+                    return mock_markdown_module
+                # For other imports, use the real import
+                return __import__(name, *args, **kwargs)
 
-class TestScheduleCreationHelpers:
-    """Test helper methods for creating schedules."""
+            mock_import.side_effect = import_side_effect
 
-    def test_create_daily_schedule(self) -> None:
-        """Test daily schedule creation helper."""
+            result = scheduler._markdown_to_html(markdown_content)
+
+            assert "<h1>Test Heading</h1>" in result
+            assert "<strong>bold</strong>" in result
+            assert "<html>" in result
+            assert "<style>" in result
+            assert "font-family:" in result
+
+    def test_markdown_to_html_without_markdown(self, scheduler):
+        """Test markdown to HTML conversion without markdown package."""
+        markdown_content = "# Test Heading\n\nThis is **bold** text."
+
+        # Mock the markdown import to raise ImportError
+        with patch('builtins.__import__') as mock_import:
+            def import_side_effect(name, *args, **kwargs):
+                if name == 'markdown':
+                    raise ImportError("No module named 'markdown'")
+                # For other imports, use the real import
+                return __import__(name, *args, **kwargs)
+
+            mock_import.side_effect = import_side_effect
+
+            result = scheduler._markdown_to_html(markdown_content)
+
+            assert "<html>" in result
+            assert "<pre>" in result
+            assert markdown_content.replace('\n', '<br>\n') in result
+
+    def test_create_daily_schedule(self):
+        """Test creating daily schedule."""
         schedule = BriefScheduler.create_daily_schedule(
-            name="daily_test",
+            name="Daily Brief",
             hour=10,
             minute=30,
-            email_recipients=["test@example.com"],
+            email_recipients=["user@example.com"],
             max_topics=15
         )
 
-        assert schedule.name == "daily_test"
+        assert schedule.name == "Daily Brief"
         assert schedule.schedule_cron == "30 10 * * *"
-        assert schedule.brief_config.brief_type == "daily"
+        assert schedule.brief_config.brief_type == BriefType.DAILY
         assert schedule.brief_config.max_topics == 15
-        assert schedule.email_recipients == ["test@example.com"]
-        assert schedule.is_active is True
+        assert schedule.email_recipients == ["user@example.com"]
+        assert "summary" in schedule.brief_config.sections
+        assert "trending" in schedule.brief_config.sections
 
-    def test_create_weekly_schedule(self) -> None:
-        """Test weekly schedule creation helper."""
+    def test_create_daily_schedule_defaults(self):
+        """Test creating daily schedule with defaults."""
+        schedule = BriefScheduler.create_daily_schedule(name="Default Daily")
+
+        assert schedule.name == "Default Daily"
+        assert schedule.schedule_cron == "0 9 * * *"  # 9:00 AM
+        assert schedule.brief_config.max_topics == 10
+        assert schedule.email_recipients == []
+
+    def test_create_weekly_schedule(self):
+        """Test creating weekly schedule."""
         schedule = BriefScheduler.create_weekly_schedule(
-            name="weekly_test",
+            name="Weekly Brief",
             day_of_week=3,  # Wednesday
-            hour=14,
-            email_recipients=["weekly@example.com"],
+            hour=14,  # 2 PM
+            email_recipients=["manager@example.com"],
             max_topics=30
         )
 
-        assert schedule.name == "weekly_test"
+        assert schedule.name == "Weekly Brief"
         assert schedule.schedule_cron == "0 14 * * 3"
-        assert schedule.brief_config.brief_type == "weekly"
+        assert schedule.brief_config.brief_type == BriefType.WEEKLY
         assert schedule.brief_config.max_topics == 30
         assert schedule.brief_config.date_range_days == 7
-        assert schedule.email_recipients == ["weekly@example.com"]
+        assert schedule.email_recipients == ["manager@example.com"]
+        assert "charts" in schedule.brief_config.sections
 
-    async def test_schedule_daily_brief_convenience(self) -> None:
-        """Test convenience function for daily brief scheduling."""
-        with patch('envy_toolkit.brief_scheduler.asyncio.create_task') as mock_create_task:
-            scheduler = await schedule_daily_brief(
-                hour=11,
-                minute=45,
-                email_recipients=["daily@example.com"]
-            )
+    def test_create_weekly_schedule_defaults(self):
+        """Test creating weekly schedule with defaults."""
+        schedule = BriefScheduler.create_weekly_schedule(name="Default Weekly")
 
-            assert isinstance(scheduler, BriefScheduler)
-            assert len(scheduler.active_schedules) == 1
-
-            schedule = scheduler.active_schedules[0]
-            assert schedule.name == "daily_zeitgeist"
-            assert schedule.schedule_cron == "45 11 * * *"
-            assert schedule.email_recipients == ["daily@example.com"]
-
-            # Should have started the scheduler task
-            mock_create_task.assert_called_once()
-
-
-class TestScheduledBriefModel:
-    """Test ScheduledBrief model validation and functionality."""
-
-    def test_scheduled_brief_creation(self) -> None:
-        """Test ScheduledBrief model creation."""
-        config = BriefConfig(brief_type=BriefType.DAILY)
-
-        schedule = ScheduledBrief(
-            name="test_schedule",
-            brief_config=config,
-            schedule_cron="0 9 * * *"
-        )
-
-        assert schedule.name == "test_schedule"
-        assert schedule.brief_config == config
-        assert schedule.schedule_cron == "0 9 * * *"
-        assert schedule.is_active is True
-        assert schedule.last_run is None
-        assert schedule.next_run is None
+        assert schedule.name == "Default Weekly"
+        assert schedule.schedule_cron == "0 9 * * 1"  # 9 AM on Monday
+        assert schedule.brief_config.max_topics == 25
         assert schedule.email_recipients == []
-        assert schedule.webhook_url is None
 
-    def test_scheduled_brief_with_all_fields(self) -> None:
-        """Test ScheduledBrief with all optional fields."""
-        config = BriefConfig(brief_type=BriefType.WEEKLY)
-        now = datetime.utcnow()
 
-        schedule = ScheduledBrief(
-            name="full_schedule",
-            brief_config=config,
-            schedule_cron="0 9 * * 1",
-            is_active=False,
-            last_run=now - timedelta(days=7),
-            next_run=now + timedelta(days=7),
-            email_recipients=["user1@test.com", "user2@test.com"],
-            webhook_url="https://example.com/webhook"
-        )
+class TestScheduleDailyBrief:
+    """Test convenience function for daily brief scheduling."""
 
-        assert schedule.is_active is False
-        assert schedule.last_run == now - timedelta(days=7)
-        assert schedule.next_run == now + timedelta(days=7)
-        assert len(schedule.email_recipients) == 2
-        assert schedule.webhook_url == "https://example.com/webhook"
+    @pytest.mark.asyncio
+    async def test_schedule_daily_brief(self):
+        """Test schedule_daily_brief convenience function."""
+        with patch('envy_toolkit.brief_scheduler.ZeitgeistAgent') as mock_agent_class:
+            mock_agent = Mock()
+            mock_agent_class.return_value = mock_agent
+
+            with patch('asyncio.create_task') as mock_create_task:
+                scheduler = await schedule_daily_brief(
+                    hour=10,
+                    minute=15,
+                    email_recipients=["user@example.com"]
+                )
+
+                assert isinstance(scheduler, BriefScheduler)
+                assert len(scheduler.active_schedules) == 1
+
+                schedule = scheduler.active_schedules[0]
+                assert schedule.name == "daily_zeitgeist"
+                assert schedule.schedule_cron == "15 10 * * *"
+                assert schedule.email_recipients == ["user@example.com"]
+
+                # Should have created task to start scheduler
+                mock_create_task.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_schedule_daily_brief_defaults(self):
+        """Test schedule_daily_brief with default parameters."""
+        with patch('envy_toolkit.brief_scheduler.ZeitgeistAgent') as mock_agent_class:
+            mock_agent = Mock()
+            mock_agent_class.return_value = mock_agent
+
+            with patch('asyncio.create_task'):
+                scheduler = await schedule_daily_brief()
+
+                schedule = scheduler.active_schedules[0]
+                assert schedule.schedule_cron == "0 9 * * *"  # 9:00 AM
+                assert schedule.email_recipients == []

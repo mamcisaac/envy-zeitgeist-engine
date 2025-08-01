@@ -61,6 +61,7 @@ class TestStructuredFormatter:
         try:
             raise ValueError("Test exception")
         except ValueError:
+            import sys
             record = logger.makeRecord(
                 name="test.module",
                 level=logging.ERROR,
@@ -68,7 +69,7 @@ class TestStructuredFormatter:
                 lno=42,
                 msg="Error occurred",
                 args=(),
-                exc_info=None
+                exc_info=sys.exc_info()
             )
 
         # Format and parse the JSON
@@ -127,7 +128,8 @@ class TestEnhancedFormatter:
             lno=42,
             msg="Test message",
             args=(),
-            exc_info=None
+            exc_info=None,
+            func="test_file"
         )
 
         formatted = formatter.format(record)

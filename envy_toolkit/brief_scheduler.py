@@ -189,7 +189,8 @@ class BriefScheduler:
             with smtplib.SMTP(smtp_server, smtp_port) as server:
                 server.starttls()
                 # We checked these are not None above
-                assert smtp_username is not None and smtp_password is not None
+                if smtp_username is None or smtp_password is None:
+                    raise ValueError("SMTP credentials are required but were not provided")
                 server.login(smtp_username, smtp_password)
                 server.send_message(msg)
 

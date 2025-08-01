@@ -201,6 +201,11 @@ class ErrorHandler:
                 with LogContext(**full_context):
                     self.logger.info(f"Executing fallback for {operation_name}")
                     result = fallback_action()
+                    # Check if result is a coroutine and handle appropriately
+                    if asyncio.iscoroutine(result):
+                        # This will be handled by the caller if they're in async context
+                        # For now, we return the coroutine and let caller await it
+                        return result
                     self.logger.info(f"Fallback successful for {operation_name}")
                     return result
             except Exception as fallback_error:
@@ -340,21 +345,18 @@ def handle_errors(
             try:
                 return await func(*args, **kwargs)
             except Exception as e:
-                fallback_result = None
-                if fallback:
-                    if asyncio.iscoroutinefunction(fallback):
-                        def fallback_result() -> Any:
-                            return asyncio.create_task(fallback())
-                    else:
-                        fallback_result = fallback
-
-                return handler.handle_error(
+                result = handler.handle_error(
                     error=e,
                     context=context,
-                    fallback_action=fallback_result,
+                    fallback_action=fallback,
                     operation_name=op_name,
                     suppress_reraise=suppress_reraise
                 )
+
+                # If result is a coroutine (async fallback), await it
+                if asyncio.iscoroutine(result):
+                    return await result
+                return result
 
         # Return appropriate wrapper based on function type
         if asyncio.iscoroutinefunction(func):

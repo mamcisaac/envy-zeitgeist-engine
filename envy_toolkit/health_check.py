@@ -140,25 +140,37 @@ class HealthChecker:
         # Process component results
         components = []
         overall_status = HealthStatus.HEALTHY
+        unhealthy_count = 0
+        degraded_count = 0
 
         for result in component_results:
             if isinstance(result, ComponentHealth):
                 components.append(result)
-                # Update overall status based on component status
+                # Count problematic components
                 if result.status == HealthStatus.UNHEALTHY:
-                    overall_status = HealthStatus.UNHEALTHY
-                elif result.status == HealthStatus.DEGRADED and overall_status == HealthStatus.HEALTHY:
-                    overall_status = HealthStatus.DEGRADED
+                    unhealthy_count += 1
+                elif result.status == HealthStatus.DEGRADED:
+                    degraded_count += 1
+                elif result.status == HealthStatus.UNKNOWN:
+                    degraded_count += 1  # Treat unknown as degraded
             elif isinstance(result, Exception):
-                # Component check failed
-                self.logger.error(f"Component health check failed: {result}")
+                # Component check failed - should not happen since _run_component_check handles exceptions
+                self.logger.error(f"Unexpected exception in component check: {result}")
                 components.append(ComponentHealth(
                     name="unknown",
-                    status=HealthStatus.UNKNOWN,
+                    status=HealthStatus.UNHEALTHY,
                     message=f"Health check failed: {result}",
                     last_checked=datetime.utcnow()
                 ))
-                overall_status = HealthStatus.DEGRADED
+                unhealthy_count += 1
+
+        # Determine overall status based on component problems
+        if unhealthy_count > 1 or (unhealthy_count > 0 and degraded_count > 0):
+            # Multiple failures or mixed critical issues = unhealthy system
+            overall_status = HealthStatus.UNHEALTHY
+        elif unhealthy_count > 0 or degraded_count > 0:
+            # Single component issues = degraded system
+            overall_status = HealthStatus.DEGRADED
 
         # Collect system metrics
         system_metrics = self._get_system_metrics() if not quick_check else {}

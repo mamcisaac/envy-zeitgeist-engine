@@ -111,10 +111,12 @@ class DataCollectionError(EnvyBaseError):
         if url:
             context["url"] = url
 
+        # Set default category if not provided
+        kwargs.setdefault("category", ErrorCategory.EXTERNAL)
+
         super().__init__(
             message=message,
             error_code="DATA_COLLECTION_ERROR",
-            category=ErrorCategory.EXTERNAL,
             context=context,
             **kwargs
         )
