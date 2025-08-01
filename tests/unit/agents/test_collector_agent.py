@@ -154,67 +154,37 @@ class TestCollectorAgent:
 
         assert agent._validate_item(mention) is False
 
-    @patch('agents.collector_agent.collect_twitter')
-    @patch('collectors.enhanced_celebrity_tracker.collect')
-    @patch('collectors.enhanced_network_press_collector.collect')
-    @patch('collectors.entertainment_news_collector.collect')
-    @patch('collectors.reality_show_controversy_detector.collect')
-    @patch('collectors.youtube_engagement_collector.collect')
-    async def test_scrape_all_sources(
-        self,
-        mock_youtube: AsyncMock,
-        mock_reality: AsyncMock,
-        mock_entertainment: AsyncMock,
-        mock_network: AsyncMock,
-        mock_celebrity: AsyncMock,
-        mock_twitter: AsyncMock
-    ) -> None:
+    async def test_scrape_all_sources(self) -> None:
         """Test scraping from all sources."""
-        # Mock return values for each collector
-        mock_twitter.return_value = [create_test_mention(platform="twitter")]
-        mock_celebrity.return_value = [create_test_mention(platform="news")]
-        mock_network.return_value = [create_test_mention(platform="news")]
-        mock_entertainment.return_value = [create_test_mention(platform="news")]
-        mock_reality.return_value = [create_test_mention(platform="news")]
-        mock_youtube.return_value = [create_test_mention(platform="youtube")]
-
         agent = CollectorAgent()
 
-        with patch('aiohttp.ClientSession') as mock_session_class:
-            mock_session = AsyncMock()
-            mock_session_class.return_value.__aenter__.return_value = mock_session
+        # Mock the individual collection methods
+        with patch.object(agent, '_expand_queries', return_value=['test query']), \
+             patch.object(agent, '_collect_twitter', return_value=[create_test_mention(platform="twitter")]), \
+             patch.object(agent, '_collect_reddit', return_value=[create_test_mention(platform="reddit")]), \
+             patch.object(agent, '_collect_news', return_value=[create_test_mention(platform="news")]), \
+             patch.object(agent, '_collect_entertainment_sites', return_value=[create_test_mention(platform="youtube")]):
 
             mentions = await agent._scrape_all_sources()
 
-        # Should collect from all sources
-        assert len(mentions) == 6  # One from each collector
+        # Should collect from all sources (4 main collection methods)
+        assert len(mentions) == 4  # One from each collection method
 
-        # Verify all collectors were called
-        mock_twitter.assert_called_once_with(mock_session)
-        mock_celebrity.assert_called_once_with(mock_session)
-        mock_network.assert_called_once_with(mock_session)
-        mock_entertainment.assert_called_once_with(mock_session)
-        mock_reality.assert_called_once_with(mock_session)
-        mock_youtube.assert_called_once_with(mock_session)
-
-    @patch('agents.collector_agent.collect_twitter')
-    async def test_scrape_all_sources_with_errors(self, mock_twitter: AsyncMock) -> None:
+    async def test_scrape_all_sources_with_errors(self) -> None:
         """Test scraping handles individual source errors gracefully."""
-        # Mock one collector raising an exception
-        mock_twitter.side_effect = Exception("Twitter API error")
+        agent = CollectorAgent()
 
-        with patch('collectors.enhanced_celebrity_tracker.collect') as mock_celebrity:
-            mock_celebrity.return_value = [create_test_mention(platform="news")]
+        # Mock the individual collection methods with one raising an exception
+        with patch.object(agent, '_expand_queries', return_value=['test query']), \
+             patch.object(agent, '_collect_twitter', side_effect=Exception("Twitter API error")), \
+             patch.object(agent, '_collect_reddit', return_value=[create_test_mention(platform="reddit")]), \
+             patch.object(agent, '_collect_news', return_value=[create_test_mention(platform="news")]), \
+             patch.object(agent, '_collect_entertainment_sites', return_value=[create_test_mention(platform="youtube")]):
 
-            agent = CollectorAgent()
-
-            with patch('aiohttp.ClientSession') as mock_session_class:
-                mock_session_class.return_value.__aenter__.return_value = AsyncMock()
-
-                mentions = await agent._scrape_all_sources()
+            mentions = await agent._scrape_all_sources()
 
         # Should continue collecting from other sources despite one error
-        assert len(mentions) >= 1  # At least the celebrity mention
+        assert len(mentions) == 3  # Three working collection methods
 
     async def test_add_embeddings(self) -> None:
         """Test adding embeddings to mentions."""
@@ -301,14 +271,10 @@ class TestCollectorAgent:
         # Second mention might not have embedding due to error
         # The implementation should handle this gracefully
 
-    @patch('agents.collector_agent.collect_twitter')
-    @patch('collectors.enhanced_celebrity_tracker.collect')
-    async def test_run_integration(
-        self,
-        mock_celebrity: AsyncMock,
-        mock_twitter: AsyncMock
-    ) -> None:
+    async def test_run_integration(self) -> None:
         """Test the complete run workflow."""
+        agent = CollectorAgent()
+
         # Create test mentions
         valid_mention = create_test_mention(
             platform="twitter",
@@ -322,23 +288,8 @@ class TestCollectorAgent:
             score=0.0  # No engagement - will be filtered out
         )
 
-        # Mock collectors
-        mock_twitter.return_value = [valid_mention, invalid_mention]
-        mock_celebrity.return_value = []
-
-        # Mock other collectors to return empty lists
-        with patch('collectors.enhanced_network_press_collector.collect') as mock_network, \
-             patch('collectors.entertainment_news_collector.collect') as mock_entertainment, \
-             patch('collectors.reality_show_controversy_detector.collect') as mock_reality, \
-             patch('collectors.youtube_engagement_collector.collect') as mock_youtube:
-
-            mock_network.return_value = []
-            mock_entertainment.return_value = []
-            mock_reality.return_value = []
-            mock_youtube.return_value = []
-
-            agent = CollectorAgent()
-
+        # Mock all the collection methods to return specific mentions
+        with patch.object(agent, '_scrape_all_sources', return_value=[valid_mention, invalid_mention]):
             # Mock dependencies
             agent.deduper.filter_duplicates = MagicMock(
                 side_effect=lambda x: x  # Return same items (no duplicates)
@@ -346,15 +297,14 @@ class TestCollectorAgent:
             agent.llm.embed_text = AsyncMock(return_value=[0.1] * 1536)
             agent.supabase.bulk_insert_mentions = AsyncMock()
 
-            with patch('aiohttp.ClientSession'):
-                await agent.run()
+            await agent.run()
 
             # Verify workflow steps
             # Should have attempted to insert mentions (only valid ones)
             agent.supabase.bulk_insert_mentions.assert_called_once()
             inserted_mentions = agent.supabase.bulk_insert_mentions.call_args[0][0]
 
-            # Should only insert valid mentions
+            # Should only insert valid mentions (the invalid one gets filtered out)
             assert len(inserted_mentions) == 1
             assert inserted_mentions[0]["url"] == "https://twitter.com/user/status/123"
 
@@ -386,30 +336,40 @@ class TestCollectorAgent:
         """Test that collection from multiple sources happens concurrently."""
         import time
 
-        # Mock collectors with delays to test concurrency
-        async def slow_collector(*args, **kwargs) -> List[RawMention]:
+        agent = CollectorAgent()
+
+        # Mock collection methods with delays to test concurrency
+        async def slow_twitter_collector(*args, **kwargs) -> List[RawMention]:
             await asyncio.sleep(0.1)  # Small delay
-            return [create_test_mention(platform="test")]
+            return [create_test_mention(platform="twitter")]
 
-        with patch('agents.collector_agent.collect_twitter', side_effect=slow_collector), \
-             patch('collectors.enhanced_celebrity_tracker.collect', side_effect=slow_collector), \
-             patch('collectors.enhanced_network_press_collector.collect', side_effect=slow_collector), \
-             patch('collectors.entertainment_news_collector.collect', side_effect=slow_collector), \
-             patch('collectors.reality_show_controversy_detector.collect', side_effect=slow_collector), \
-             patch('collectors.youtube_engagement_collector.collect', side_effect=slow_collector):
+        async def slow_reddit_collector(*args, **kwargs) -> List[RawMention]:
+            await asyncio.sleep(0.1)  # Small delay
+            return [create_test_mention(platform="reddit")]
 
-            agent = CollectorAgent()
+        async def slow_news_collector(*args, **kwargs) -> List[RawMention]:
+            await asyncio.sleep(0.1)  # Small delay
+            return [create_test_mention(platform="news")]
 
-            with patch('aiohttp.ClientSession'):
-                start_time = time.time()
-                mentions = await agent._scrape_all_sources()
-                end_time = time.time()
+        async def slow_entertainment_collector(*args, **kwargs) -> List[RawMention]:
+            await asyncio.sleep(0.1)  # Small delay
+            return [create_test_mention(platform="youtube")]
+
+        with patch.object(agent, '_expand_queries', return_value=['test query']), \
+             patch.object(agent, '_collect_twitter', side_effect=slow_twitter_collector), \
+             patch.object(agent, '_collect_reddit', side_effect=slow_reddit_collector), \
+             patch.object(agent, '_collect_news', side_effect=slow_news_collector), \
+             patch.object(agent, '_collect_entertainment_sites', side_effect=slow_entertainment_collector):
+
+            start_time = time.time()
+            mentions = await agent._scrape_all_sources()
+            end_time = time.time()
 
             # Should complete in less time than sequential execution would take
-            # (6 collectors * 0.1s = 0.6s sequential, concurrent should be ~0.1s)
+            # (4 collectors * 0.1s = 0.4s sequential, concurrent should be ~0.1s)
             elapsed = end_time - start_time
-            assert elapsed < 0.5  # Allow some overhead
-            assert len(mentions) == 6  # All collectors returned results
+            assert elapsed < 0.3  # Allow some overhead
+            assert len(mentions) == 4  # All collectors returned results
 
     @pytest.mark.parametrize("platform_score", [0.0, -0.1, None])
     def test_validate_item_invalid_scores(self, platform_score: float) -> None:

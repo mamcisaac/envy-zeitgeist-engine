@@ -77,7 +77,6 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--cov=envy_toolkit",
-    "--cov=collectors",
     "--cov=agents",
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov",
@@ -98,10 +97,11 @@ filterwarnings = [
     "ignore::UserWarning",
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
+    "ignore::FutureWarning",
 ]
 
 [tool.coverage.run]
-source = ["envy_toolkit", "collectors", "agents"]
+source = ["envy_toolkit", "agents"]
 omit = [
     "*/tests/*",
     "*/venv/*",

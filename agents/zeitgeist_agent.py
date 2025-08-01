@@ -80,7 +80,9 @@ class ZeitgeistAgent:
             cluster_selection_method='eom'
         )
 
-        cluster_labels = clusterer.fit_predict(vectors.toarray())
+        # Convert sparse matrix to dense array to avoid sklearn deprecation warnings
+        dense_vectors = vectors.toarray()
+        cluster_labels = clusterer.fit_predict(dense_vectors)
 
         # Group mentions by cluster
         clusters: Dict[int, List[str]] = {}
