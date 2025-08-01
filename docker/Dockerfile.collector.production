@@ -1,0 +1,77 @@
+# Multi-stage production Dockerfile for Collector Agent
+# Optimized for size, security, and performance
+
+# Stage 1: Dependencies
+FROM python:3.11-slim AS dependencies
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    gcc \
+    g++ \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /deps
+
+# Copy only dependency files first for better caching
+COPY pyproject.toml ./
+COPY requirements*.txt ./
+
+# Create wheels for all dependencies
+RUN pip install --no-cache-dir wheel setuptools pip --upgrade && \
+    pip wheel --no-cache-dir --no-deps --wheel-dir /deps/wheels -r requirements.txt && \
+    pip wheel --no-cache-dir --no-deps --wheel-dir /deps/wheels git+https://github.com/JustAnotherArchivist/snscrape.git@master
+
+# Stage 2: Runtime
+FROM python:3.11-slim AS runtime
+
+# Security: Create non-root user
+RUN groupadd -r zeitgeist && useradd -r -g zeitgeist zeitgeist
+
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy wheels from dependencies stage
+COPY --from=dependencies /deps/wheels /wheels
+
+# Install wheels
+RUN pip install --no-cache-dir --no-index --find-links=/wheels /wheels/* && \
+    rm -rf /wheels
+
+WORKDIR /app
+
+# Copy application code
+COPY --chown=zeitgeist:zeitgeist envy_toolkit ./envy_toolkit
+COPY --chown=zeitgeist:zeitgeist collectors ./collectors
+COPY --chown=zeitgeist:zeitgeist agents ./agents
+
+# Create necessary directories
+RUN mkdir -p /app/logs /app/data && \
+    chown -R zeitgeist:zeitgeist /app
+
+# Security: Switch to non-root user
+USER zeitgeist
+
+# Set Python environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    LOG_LEVEL=INFO
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)" || exit 1
+
+# Labels for metadata
+LABEL maintainer="envy-media" \
+      version="1.0.0" \
+      description="Zeitgeist Collector Agent" \
+      org.opencontainers.image.source="https://github.com/envy-media/zeitgeist-engine"
+
+# Run collector agent
+ENTRYPOINT ["python", "-m"]
+CMD ["agents.collector_agent"]
