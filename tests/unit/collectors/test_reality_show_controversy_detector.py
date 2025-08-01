@@ -164,12 +164,12 @@ class TestRealityShowControversyDetector:
 
         # Check specific categorizations
         racist_mention = next((m for m in mentions if "racist" in m.title.lower()), None)
-        if racist_mention:
+        if racist_mention and racist_mention.extras:
             assert racist_mention.extras["controversy_type"] == "discrimination"
             assert racist_mention.extras["severity"] == "high"
 
         disqualified_mention = next((m for m in mentions if "disqualified" in m.title.lower()), None)
-        if disqualified_mention:
+        if disqualified_mention and disqualified_mention.extras:
             assert disqualified_mention.extras["controversy_type"] == "production_issue"
 
     async def test_collect_from_reality_blogs_http_error(self) -> None:

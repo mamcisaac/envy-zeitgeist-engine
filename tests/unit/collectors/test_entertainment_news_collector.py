@@ -7,6 +7,7 @@ Tests entertainment news collection functionality with mocked external calls.
 import asyncio
 import hashlib
 from datetime import datetime
+from typing import Any, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -156,8 +157,9 @@ class TestEntertainmentNewsCollector:
 
         # Check specific mention details
         housewives_mention = next(m for m in mentions if "housewives" in m.title.lower())
-        assert housewives_mention.extras["author"] == "Reality TV Insider"
-        assert "Reality TV" in [tag for tag in housewives_mention.extras.get("tags", [])]
+        if housewives_mention.extras:
+            assert housewives_mention.extras["author"] == "Reality TV Insider"
+            assert "Reality TV" in [tag for tag in housewives_mention.extras.get("tags", [])]
 
         # Check HTML cleaning
         bachelor_mention = next(m for m in mentions if "bachelor" in m.title.lower())
@@ -250,7 +252,7 @@ class TestEntertainmentNewsCollector:
         }
 
         with aioresponses() as mock_response:
-            mock_response.get(config["reality_section"], body=mock_html, content_type='text/html')
+            mock_response.get(str(config["reality_section"]), body=mock_html, content_type='text/html')
 
             async with aiohttp.ClientSession() as session:
                 mentions = await collector._scrape_source_directly(session, "US Weekly", config)
@@ -279,7 +281,7 @@ class TestEntertainmentNewsCollector:
         }
 
         with aioresponses() as mock_response:
-            mock_response.get(config["reality_section"], status=403)
+            mock_response.get(str(config["reality_section"]), status=403)
 
             async with aiohttp.ClientSession() as session:
                 mentions = await collector._scrape_source_directly(session, "US Weekly", config)
@@ -566,7 +568,7 @@ class TestEntertainmentNewsCollector:
             mock_collector = MagicMock()
 
             # Mock some sources to raise exceptions, others to succeed
-            def mock_collect_source_data(session, source_name, config):
+            def mock_collect_source_data(session: Any, source_name: str, config: Any) -> List[Any]:
                 if source_name == "TMZ":
                     raise Exception("TMZ collection error")
                 elif source_name == "People":

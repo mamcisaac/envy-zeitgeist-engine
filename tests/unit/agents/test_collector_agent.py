@@ -6,7 +6,7 @@ Tests the main collector agent orchestration with mocked dependencies.
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import List
+from typing import Any, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -192,40 +192,39 @@ class TestCollectorAgent:
 
         # Mock LLM client
         mock_embedding = [0.1, 0.2, 0.3] * 512
-        agent.llm.embed_text = AsyncMock(return_value=mock_embedding)
+        with patch.object(agent.llm, 'embed_text', new=AsyncMock(return_value=mock_embedding)):
+            # Create test mentions
+            mentions_data = [
+                {
+                    "id": "test-1",
+                    "source": "twitter",
+                    "url": "https://twitter.com/test/1",
+                    "title": "Test tweet 1",
+                    "body": "Test content 1",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "platform_score": 0.8
+                },
+                {
+                    "id": "test-2",
+                    "source": "reddit",
+                    "url": "https://reddit.com/test/2",
+                    "title": "Test post 2",
+                    "body": "Test content 2",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "platform_score": 0.6
+                }
+            ]
 
-        # Create test mentions
-        mentions_data = [
-            {
-                "id": "test-1",
-                "source": "twitter",
-                "url": "https://twitter.com/test/1",
-                "title": "Test tweet 1",
-                "body": "Test content 1",
-                "timestamp": datetime.utcnow().isoformat(),
-                "platform_score": 0.8
-            },
-            {
-                "id": "test-2",
-                "source": "reddit",
-                "url": "https://reddit.com/test/2",
-                "title": "Test post 2",
-                "body": "Test content 2",
-                "timestamp": datetime.utcnow().isoformat(),
-                "platform_score": 0.6
-            }
-        ]
+            enriched = await agent._add_embeddings(mentions_data)
 
-        enriched = await agent._add_embeddings(mentions_data)
+            # Verify embeddings were added
+            assert len(enriched) == 2
+            for mention in enriched:
+                assert "embedding" in mention
+                assert mention["embedding"] == mock_embedding
 
-        # Verify embeddings were added
-        assert len(enriched) == 2
-        for mention in enriched:
-            assert "embedding" in mention
-            assert mention["embedding"] == mock_embedding
-
-        # Verify embed_text was called for each mention
-        assert agent.llm.embed_text.call_count == 2
+            # Verify embed_text was called for each mention
+            assert agent.llm.embed_text.call_count == 2
 
     async def test_add_embeddings_with_errors(self) -> None:
         """Test embedding addition handles errors gracefully."""
@@ -339,19 +338,19 @@ class TestCollectorAgent:
         agent = CollectorAgent()
 
         # Mock collection methods with delays to test concurrency
-        async def slow_twitter_collector(*args, **kwargs) -> List[RawMention]:
+        async def slow_twitter_collector(*args: Any, **kwargs: Any) -> List[RawMention]:
             await asyncio.sleep(0.1)  # Small delay
             return [create_test_mention(platform="twitter")]
 
-        async def slow_reddit_collector(*args, **kwargs) -> List[RawMention]:
+        async def slow_reddit_collector(*args: Any, **kwargs: Any) -> List[RawMention]:
             await asyncio.sleep(0.1)  # Small delay
             return [create_test_mention(platform="reddit")]
 
-        async def slow_news_collector(*args, **kwargs) -> List[RawMention]:
+        async def slow_news_collector(*args: Any, **kwargs: Any) -> List[RawMention]:
             await asyncio.sleep(0.1)  # Small delay
             return [create_test_mention(platform="news")]
 
-        async def slow_entertainment_collector(*args, **kwargs) -> List[RawMention]:
+        async def slow_entertainment_collector(*args: Any, **kwargs: Any) -> List[RawMention]:
             await asyncio.sleep(0.1)  # Small delay
             return [create_test_mention(platform="youtube")]
 

@@ -6,6 +6,7 @@ Tests Twitter scraping functionality with mocked external calls.
 
 import json
 from datetime import datetime, timedelta
+from typing import Any, AsyncGenerator, Dict, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -346,7 +347,7 @@ class TestCollectTwitter:
         mock_scraper.fetch_trending_tags.return_value = mock_tags
         mock_scraper.enrich_tag_context.return_value = mock_contexts
 
-        async def mock_scrape_tweets(tag_name: str, since_hours: int = 24):
+        async def mock_scrape_tweets(tag_name: str, since_hours: int = 24) -> AsyncGenerator[Dict[str, Any], None]:
             if tag_name == "#TestTag":
                 for tweet in mock_tweets:
                     yield tweet
@@ -370,6 +371,7 @@ class TestCollectTwitter:
         assert mention.title == "Test tweet content"
         assert mention.body == "Test tweet content"
         assert mention.entities == ["TestTag"]
+        assert mention.extras is not None
         assert mention.extras["tag_volume"] == 10000
         assert mention.extras["context"] == "Context for test tag"
         assert mention.extras["user_followers"] == 1000
@@ -397,7 +399,7 @@ class TestCollectTwitter:
         mock_scraper.fetch_trending_tags.return_value = mock_tags
         mock_scraper.enrich_tag_context.return_value = mock_contexts
 
-        async def mock_scrape_tweets(tag_name: str, since_hours: int = 24):
+        async def mock_scrape_tweets(tag_name: str, since_hours: int = 24) -> AsyncGenerator[Dict[str, Any], None]:
             yield low_engagement_tweet
 
         mock_scraper.scrape_tweets = mock_scrape_tweets
@@ -436,9 +438,9 @@ class TestCollectTwitter:
         mock_scraper.fetch_trending_tags.return_value = mock_tags
         mock_scraper.enrich_tag_context.return_value = mock_contexts
 
-        async def mock_scrape_tweets(tag_name: str, since_hours: int = 24):
+        async def mock_scrape_tweets(tag_name: str, since_hours: int = 24) -> AsyncGenerator[Dict[str, Any], None]:
             for tweet in mock_tweets:
-                yield tweet
+                yield cast(Dict[str, Any], tweet)
 
         mock_scraper.scrape_tweets = mock_scrape_tweets
         mock_scraper_class.return_value = mock_scraper
@@ -483,9 +485,9 @@ class TestCollectTwitter:
         mock_scraper.fetch_trending_tags.return_value = mock_tags
         mock_scraper.enrich_tag_context.return_value = mock_contexts
 
-        async def mock_scrape_tweets(tag_name: str, since_hours: int = 24):
+        async def mock_scrape_tweets(tag_name: str, since_hours: int = 24) -> AsyncGenerator[Dict[str, Any], None]:
             for tweet in mock_tweets:
-                yield tweet
+                yield cast(Dict[str, Any], tweet)
 
         mock_scraper.scrape_tweets = mock_scrape_tweets
         mock_scraper_class.return_value = mock_scraper
@@ -545,7 +547,7 @@ class TestCollectTwitter:
         mock_scraper.fetch_trending_tags.return_value = mock_tags
         mock_scraper.enrich_tag_context.return_value = mock_contexts
 
-        async def mock_scrape_tweets(tag_name: str, since_hours: int = 24):
+        async def mock_scrape_tweets(tag_name: str, since_hours: int = 24) -> AsyncGenerator[Dict[str, Any], None]:
             yield mock_tweet
 
         mock_scraper.scrape_tweets = mock_scrape_tweets

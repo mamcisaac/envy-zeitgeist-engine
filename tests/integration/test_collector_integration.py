@@ -6,7 +6,7 @@ Tests interactions between different collectors and shared infrastructure.
 
 import asyncio
 from datetime import datetime
-from typing import Any
+from typing import Any, List
 from unittest.mock import AsyncMock, patch
 
 import aiohttp
@@ -299,11 +299,11 @@ class TestCollectorIntegration:
         import time
 
         # Mock collectors with realistic delays
-        async def slow_celebrity_collector(session):
+        async def slow_celebrity_collector(session: aiohttp.ClientSession) -> List[Any]:
             await asyncio.sleep(0.1)  # 100ms delay
             return [create_test_mention(platform="news")]
 
-        async def fast_youtube_collector(session):
+        async def fast_youtube_collector(session: aiohttp.ClientSession) -> List[Any]:
             await asyncio.sleep(0.05)  # 50ms delay
             return [create_test_mention(platform="youtube")]
 
@@ -382,13 +382,13 @@ class TestCollectorIntegration:
 
         # Mock session with cleanup tracking
         class CleanupTrackingSession:
-            async def __aenter__(self):
+            async def __aenter__(self) -> 'CleanupTrackingSession':
                 return self
 
-            async def __aexit__(self, exc_type, exc_val, exc_tb):
+            async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
                 resource_cleanup_calls.append("session_closed")
 
-            async def get(self, *args, **kwargs):
+            async def get(self, *args: Any, **kwargs: Any) -> Any:
                 mock_response = AsyncMock()
                 mock_response.status = 200
                 return mock_response
@@ -397,7 +397,7 @@ class TestCollectorIntegration:
             # Run collector that creates its own session
             with patch('collectors.enhanced_celebrity_tracker.collect') as mock_celebrity:
 
-                async def collector_with_session_management(session=None):
+                async def collector_with_session_management(session: Any = None) -> List[Any]:
                     if session is None:
                         async with aiohttp.ClientSession() as _:
                             # Simulate work
@@ -448,5 +448,6 @@ class TestCollectorIntegration:
             assert hasattr(youtube_collector, 'reality_search_terms')
             assert hasattr(celebrity_tracker, 'celebrity_categories')
 
-            # Should have different search terms/categories
-            assert youtube_collector.reality_search_terms != celebrity_tracker.celebrity_categories
+            # Should have different search terms/categories (different types, so they're different by nature)
+            assert isinstance(youtube_collector.reality_search_terms, list)
+            assert isinstance(celebrity_tracker.celebrity_categories, dict)

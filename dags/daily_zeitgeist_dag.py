@@ -1,8 +1,8 @@
 import asyncio
 from datetime import datetime, timedelta
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow import DAG  # type: ignore[import-not-found]
+from airflow.operators.python import PythonOperator  # type: ignore[import-not-found]
 
 default_args = {
     'owner': 'envy-media',
@@ -15,7 +15,7 @@ default_args = {
 }
 
 
-def run_collector():
+def run_collector() -> None:
     """Run the collector agent"""
     import sys
     sys.path.append('/opt/airflow/dags/envy-zeitgeist-engine')
@@ -23,7 +23,7 @@ def run_collector():
     asyncio.run(main())
 
 
-def run_zeitgeist():
+def run_zeitgeist() -> None:
     """Run the zeitgeist agent"""
     import sys
     sys.path.append('/opt/airflow/dags/envy-zeitgeist-engine')

@@ -2,7 +2,7 @@ import asyncio
 import datetime
 import json
 import tempfile
-from typing import AsyncGenerator, Dict, List
+from typing import Any, AsyncGenerator, Dict, List, Tuple
 
 import aiohttp
 from loguru import logger
@@ -19,17 +19,18 @@ TRENDS_ENDPOINT = (
 class TwitterFreeScraper:
     """Free Twitter/X scraping using snscrape and public endpoints"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.perplexity = PerplexityClient()
         self.serpapi = SerpAPIClient()
 
-    async def fetch_trending_tags(self, session: aiohttp.ClientSession) -> List[tuple]:
+    async def fetch_trending_tags(self, session: aiohttp.ClientSession) -> List[Tuple[str, int]]:
         """Fetch trending hashtags from public Twitter endpoint"""
         try:
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
-            async with session.get(TRENDS_ENDPOINT, headers=headers, timeout=15) as resp:
+            timeout = aiohttp.ClientTimeout(total=15)
+            async with session.get(TRENDS_ENDPOINT, headers=headers, timeout=timeout) as resp:
                 if resp.status != 200:
                     logger.warning(f"Twitter trends endpoint returned {resp.status}")
                     return await self._fallback_trends()
@@ -44,7 +45,7 @@ class TwitterFreeScraper:
             logger.error(f"Failed to fetch Twitter trends: {e}")
             return await self._fallback_trends()
 
-    async def _fallback_trends(self) -> List[tuple]:
+    async def _fallback_trends(self) -> List[Tuple[str, int]]:
         """Fallback to SerpAPI for trending topics"""
         try:
             results = await self.serpapi.search("trending on twitter today", num_results=10)
@@ -59,7 +60,7 @@ class TwitterFreeScraper:
         except Exception:
             return []
 
-    async def scrape_tweets(self, tag: str, since_hours: int = 24) -> AsyncGenerator[dict, None]:
+    async def scrape_tweets(self, tag: str, since_hours: int = 24) -> AsyncGenerator[Dict[str, Any], None]:
         """Scrape tweets for a hashtag using snscrape"""
         since = (datetime.datetime.utcnow() - datetime.timedelta(hours=since_hours)).date()
 

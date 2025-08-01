@@ -6,6 +6,7 @@ Tests celebrity tracking functionality with mocked external calls.
 
 import asyncio
 from datetime import datetime
+from typing import List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -455,7 +456,7 @@ class TestEnhancedCelebrityTracker:
         """Test crossover detection with empty list."""
         tracker = EnhancedCelebrityTracker()
 
-        celebrities = []
+        celebrities: List[str] = []
         assert tracker._is_crossover(celebrities) is False
 
     @pytest.mark.parametrize("date_str,expected_success", [

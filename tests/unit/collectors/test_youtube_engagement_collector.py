@@ -5,7 +5,7 @@ Tests YouTube engagement collection functionality with mocked API calls.
 """
 
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -670,7 +670,7 @@ class TestYouTubeEngagementCollector:
         with patch('collectors.youtube_engagement_collector.build'):
             collector = YouTubeEngagementCollector()
 
-        test_cases = [
+        test_cases: List[dict[str, Any]] = [
             {
                 'title': 'Love Island USA Villa Drama',
                 'description': 'The islanders face their biggest challenge yet',

@@ -8,7 +8,7 @@ tests never make real API calls and remain fast and deterministic.
 import asyncio
 import os
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List
+from typing import Any, AsyncGenerator, Dict, Generator, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -40,7 +40,7 @@ def setup_test_environment() -> None:
 
 # Event loop fixture for async tests
 @pytest.fixture(scope="session")
-def event_loop() -> asyncio.AbstractEventLoop:
+def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     """Create an instance of the default event loop for the test session."""
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
@@ -49,14 +49,14 @@ def event_loop() -> asyncio.AbstractEventLoop:
 
 # Mock HTTP responses
 @pytest.fixture
-def mock_aiohttp() -> AsyncGenerator[aioresponses, None]:
+def mock_aiohttp() -> Generator[aioresponses, None, None]:
     """Mock aiohttp responses for async HTTP calls."""
     with aioresponses() as m:
         yield m
 
 
-@pytest.fixture
-def mock_requests() -> AsyncGenerator[responses, None]:
+@pytest.fixture  
+def mock_requests() -> Generator[responses.RequestsMock, None, None]:
     """Mock requests library for synchronous HTTP calls."""
     with responses.RequestsMock() as rsps:
         yield rsps
@@ -282,18 +282,18 @@ def temp_file_path(tmp_path: Any) -> str:
 @pytest.fixture(params=["twitter", "reddit", "tiktok", "news", "youtube"])
 def platform_source(request: Any) -> str:
     """Parametrized fixture for different platform sources."""
-    return request.param
+    return str(request.param)
 
 
 @pytest.fixture(params=[0.1, 0.5, 0.9])
 def platform_score(request: Any) -> float:
     """Parametrized fixture for different platform scores."""
-    return request.param
+    return float(request.param)
 
 
 # Cleanup fixtures
 @pytest.fixture(autouse=True)
-def cleanup_environment() -> AsyncGenerator[None, None]:
+def cleanup_environment() -> Generator[None, None, None]:
     """Clean up environment after each test."""
     yield
     # Clean up any test artifacts
@@ -310,7 +310,7 @@ def mock_all_external_services(
     mock_reddit_client: MagicMock,
     mock_perplexity_client: MagicMock,
     mock_duplicate_detector: MagicMock,
-) -> AsyncGenerator[None, None]:
+) -> Generator[None, None, None]:
     """Automatically mock all external services for every test."""
     with patch('envy_toolkit.clients.SupabaseClient', return_value=mock_supabase_client), \
          patch('envy_toolkit.clients.LLMClient', return_value=mock_llm_client), \

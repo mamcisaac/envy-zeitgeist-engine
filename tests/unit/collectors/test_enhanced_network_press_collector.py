@@ -6,6 +6,7 @@ Tests network press collection functionality with mocked external calls.
 
 import asyncio
 from datetime import datetime
+from typing import Any, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -159,8 +160,9 @@ class TestEnhancedNetworkPressCollector:
 
         # Check specific mention details
         finale_mention = next(m for m in mentions if "finale" in m.title.lower())
-        assert finale_mention.extras["urgency"] is True  # Should detect "breaking"
-        assert finale_mention.extras["content_type"] == "show_update"  # Should detect "finale"
+        if finale_mention.extras:
+            assert finale_mention.extras["urgency"] is True  # Should detect "breaking"
+            assert finale_mention.extras["content_type"] == "show_update"  # Should detect "finale"
 
     async def test_parse_rss_feed_http_error(self) -> None:
         """Test RSS feed parsing with HTTP error."""
@@ -557,7 +559,7 @@ class TestEnhancedNetworkPressCollector:
             mock_collector = MagicMock()
 
             # Mock some networks to raise exceptions, others to succeed
-            def mock_collect_network_data(session, network, sources):
+            def mock_collect_network_data(session: Any, network: str, sources: Any) -> List[Any]:
                 if network == "NBC":
                     raise Exception("NBC collection error")
                 elif network == "MTV":

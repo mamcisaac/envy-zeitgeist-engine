@@ -291,7 +291,7 @@ class TestEndToEndWorkflow:
             mention.url = f"https://twitter.com/user/status/{i}"
             tracking_mentions.append(mention)
 
-        collected_ids = set()
+        collected_ids: set[str] = set()
 
         with patch('agents.collector_agent.SupabaseClient') as mock_supabase_collector, \
              patch('agents.zeitgeist_agent.SupabaseClient') as mock_supabase_zeitgeist, \

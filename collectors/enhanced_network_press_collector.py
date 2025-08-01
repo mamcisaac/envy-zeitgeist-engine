@@ -456,7 +456,7 @@ class EnhancedNetworkPressCollector(CollectorMixin):
 
         return list(set(entities))
 
-    def _clean_html(self, html_text: str) -> str:
+    def _clean_html(self, html_text: Optional[str]) -> str:
         """Clean HTML content.
 
         Args:
