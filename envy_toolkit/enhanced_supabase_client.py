@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 from dotenv import load_dotenv
 from loguru import logger
 

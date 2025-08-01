@@ -238,7 +238,7 @@ class WeeklyBriefTemplate(MarkdownTemplate):
             all_guests.extend(topic.guests)
 
         if all_guests:
-            guest_counts = {}
+            guest_counts: Dict[str, int] = {}
             for guest in all_guests:
                 guest_counts[guest] = guest_counts.get(guest, 0) + 1
 
