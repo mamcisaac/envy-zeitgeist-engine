@@ -20,14 +20,14 @@ from tests.utils import create_test_trending_topic
 class TestMarkdownTemplate:
     """Test base MarkdownTemplate functionality."""
 
-    def test_format_timestamp(self):
+    def test_format_timestamp(self) -> None:
         """Test timestamp formatting."""
         template = DailyBriefTemplate()
         dt = datetime(2024, 3, 15, 14, 30, 0)
         formatted = template._format_timestamp(dt)
         assert "March 15, 2024 at 02:30 PM UTC" == formatted
 
-    def test_create_trend_bar(self):
+    def test_create_trend_bar(self) -> None:
         """Test ASCII trend bar creation."""
         template = DailyBriefTemplate()
 
@@ -47,7 +47,7 @@ class TestMarkdownTemplate:
         bar = template._create_trend_bar(0.25, 4)
         assert bar == "█▒▒▒"
 
-    def test_truncate_text(self):
+    def test_truncate_text(self) -> None:
         """Test text truncation."""
         template = DailyBriefTemplate()
 
@@ -68,7 +68,7 @@ class TestMarkdownTemplate:
 class TestDailyBriefTemplate:
     """Test daily brief template functionality."""
 
-    def test_generate_empty_topics(self):
+    def test_generate_empty_topics(self) -> None:
         """Test daily brief generation with no topics."""
         template = DailyBriefTemplate()
         brief = template.generate([])
@@ -76,7 +76,7 @@ class TestDailyBriefTemplate:
         assert "Daily Zeitgeist Brief" in brief
         assert "No trending topics found for today" in brief
 
-    def test_generate_with_topics(self):
+    def test_generate_with_topics(self) -> None:
         """Test daily brief generation with trending topics."""
         template = DailyBriefTemplate()
 
@@ -111,7 +111,7 @@ class TestDailyBriefTemplate:
         assert "| Rank | Topic | Score | Forecast | Trend |" in brief
         assert "|------|-------|-------|----------|-------|" in brief
 
-    def test_generate_with_custom_date(self):
+    def test_generate_with_custom_date(self) -> None:
         """Test daily brief with custom date."""
         template = DailyBriefTemplate()
         custom_date = datetime(2024, 3, 15, 10, 0, 0)
@@ -121,7 +121,7 @@ class TestDailyBriefTemplate:
 
         assert "Friday, March 15, 2024" in brief
 
-    def test_interview_opportunities_section(self):
+    def test_interview_opportunities_section(self) -> None:
         """Test interview opportunities section generation."""
         template = DailyBriefTemplate()
 
@@ -140,7 +140,7 @@ class TestDailyBriefTemplate:
         assert "What happened?" in brief
         assert "How do you feel?" in brief
 
-    def test_forecast_summary_section(self):
+    def test_forecast_summary_section(self) -> None:
         """Test forecast summary section."""
         template = DailyBriefTemplate()
 
@@ -158,7 +158,7 @@ class TestDailyBriefTemplate:
 class TestWeeklyBriefTemplate:
     """Test weekly brief template functionality."""
 
-    def test_generate_empty_topics(self):
+    def test_generate_empty_topics(self) -> None:
         """Test weekly brief with no topics."""
         template = WeeklyBriefTemplate()
         brief = template.generate([])
@@ -166,7 +166,7 @@ class TestWeeklyBriefTemplate:
         assert "# Weekly Zeitgeist Summary" in brief
         assert "No trending topics found for this week" in brief
 
-    def test_generate_with_topics(self):
+    def test_generate_with_topics(self) -> None:
         """Test weekly brief generation."""
         template = WeeklyBriefTemplate()
 
@@ -197,7 +197,7 @@ class TestWeeklyBriefTemplate:
         assert "**Peak Score:** 0.95" in brief
         assert "Celebrity A" in brief
 
-    def test_weekly_date_range(self):
+    def test_weekly_date_range(self) -> None:
         """Test weekly brief with custom date range."""
         template = WeeklyBriefTemplate()
         start_date = datetime(2024, 3, 11)  # Monday
@@ -207,7 +207,7 @@ class TestWeeklyBriefTemplate:
 
         assert "Week of March 11 - March 17, 2024" in brief
 
-    def test_trends_distribution_chart(self):
+    def test_trends_distribution_chart(self) -> None:
         """Test ASCII trends distribution chart."""
         template = WeeklyBriefTemplate()
 
@@ -227,7 +227,7 @@ class TestWeeklyBriefTemplate:
         assert "0.8-1.0:" in brief
         assert "(2)" in brief  # Two topics in high range
 
-    def test_most_mentioned_section(self):
+    def test_most_mentioned_section(self) -> None:
         """Test most mentioned entities section."""
         template = WeeklyBriefTemplate()
 
@@ -247,7 +247,7 @@ class TestWeeklyBriefTemplate:
 class TestEmailBriefTemplate:
     """Test email brief template functionality."""
 
-    def test_generate_empty_topics(self):
+    def test_generate_empty_topics(self) -> None:
         """Test email brief with no topics."""
         template = EmailBriefTemplate()
         brief = template.generate([])
@@ -256,7 +256,7 @@ class TestEmailBriefTemplate:
         assert "No trending topics today" in brief
         assert "Stay tuned for tomorrow's update!" in brief
 
-    def test_generate_with_topics(self):
+    def test_generate_with_topics(self) -> None:
         """Test email brief generation."""
         template = EmailBriefTemplate()
 
@@ -285,7 +285,7 @@ class TestEmailBriefTemplate:
         assert "•" in brief  # Bullet points for mobile
         assert "📱 *Optimized for mobile viewing*" in brief
 
-    def test_email_subject_comment(self):
+    def test_email_subject_comment(self) -> None:
         """Test email subject line comment generation."""
         template = EmailBriefTemplate()
         topics = [create_test_trending_topic()]
@@ -294,7 +294,7 @@ class TestEmailBriefTemplate:
 
         assert "<!-- Subject: Custom Subject:" in brief
 
-    def test_interview_ready_section(self):
+    def test_interview_ready_section(self) -> None:
         """Test interview ready section for email."""
         template = EmailBriefTemplate()
 
@@ -316,7 +316,7 @@ class TestEmailBriefTemplate:
 class TestCustomBriefTemplate:
     """Test custom brief template functionality."""
 
-    def test_default_configuration(self):
+    def test_default_configuration(self) -> None:
         """Test custom template with default config."""
         template = CustomBriefTemplate()
         topics = [create_test_trending_topic()]
@@ -327,7 +327,7 @@ class TestCustomBriefTemplate:
         assert "## Summary" in brief
         assert "## Trending Topics" in brief
 
-    def test_custom_configuration(self):
+    def test_custom_configuration(self) -> None:
         """Test custom template with custom config."""
         config = {
             "title": "Custom Report",
@@ -367,7 +367,7 @@ class TestCustomBriefTemplate:
         assert "**Score:**" not in topic_section
         assert "**Forecast:**" not in topic_section
 
-    def test_charts_section(self):
+    def test_charts_section(self) -> None:
         """Test charts section generation."""
         config = {"sections": ["charts"]}
         template = CustomBriefTemplate(config)
@@ -384,7 +384,7 @@ class TestCustomBriefTemplate:
         assert "Topic Scores:" in brief
         assert "█████████████▒▒| 0.90" in brief  # High score bar (15 chars wide)
 
-    def test_max_topics_limit(self):
+    def test_max_topics_limit(self) -> None:
         """Test max topics limitation."""
         config = {"max_topics": 2}
         template = CustomBriefTemplate(config)
@@ -407,7 +407,7 @@ class TestCustomBriefTemplate:
 class TestTemplateIntegration:
     """Integration tests for template functionality."""
 
-    def test_all_templates_with_same_data(self):
+    def test_all_templates_with_same_data(self) -> None:
         """Test that all templates work with the same input data."""
         topics = [
             create_test_trending_topic(
@@ -437,7 +437,7 @@ class TestTemplateIntegration:
         assert len(email) > 100
         assert len(custom) > 100
 
-    def test_markdown_formatting_consistency(self):
+    def test_markdown_formatting_consistency(self) -> None:
         """Test that all templates produce valid Markdown."""
         topics = [create_test_trending_topic()]
         templates = [
@@ -461,7 +461,7 @@ class TestTemplateIntegration:
             assert brief.endswith('\n') or not brief.endswith(' ')
 
     @patch('envy_toolkit.brief_templates.datetime')
-    def test_timezone_handling(self, mock_datetime):
+    def test_timezone_handling(self, mock_datetime) -> None:
         """Test that templates handle timezone correctly."""
         # Mock current time
         mock_now = datetime(2024, 3, 15, 14, 30, 0)
@@ -476,7 +476,7 @@ class TestTemplateIntegration:
         # Should use UTC time in generation timestamp
         assert "March 15, 2024 at 02:30 PM UTC" in brief
 
-    def test_empty_sections_handling(self):
+    def test_empty_sections_handling(self) -> None:
         """Test how templates handle empty or missing data sections."""
         # Topic with minimal data
         minimal_topic = TrendingTopic(

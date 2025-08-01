@@ -104,8 +104,12 @@ class EnhancedSupabaseClient:
         import urllib.parse
         parsed = urllib.parse.urlparse(self.supabase_url)
         host = parsed.netloc
+        
+        # Ensure host is a string (handle potential bytes)
+        if isinstance(host, bytes):
+            host = host.decode('utf-8')
 
-        return f"postgresql://postgres:{db_password}@{host.replace('https://', '').replace('http://', '')}:5432/postgres"
+        return f"postgresql://postgres:{db_password}@{host}:5432/postgres"
 
     async def _ensure_pool(self) -> asyncpg.Pool:
         """Ensure connection pool is created and healthy."""
@@ -152,7 +156,7 @@ class EnhancedSupabaseClient:
             )
         return self._circuit_breaker
 
-    def _get_cache_key(self, query: str, params: Optional[Dict[str, Any]] = None) -> str:
+    def _get_cache_key(self, query: str, params: Optional[List[Any]] = None) -> str:
         """Generate cache key for query."""
         import hashlib
         cache_input = f"{query}:{params}" if params else query
@@ -385,7 +389,7 @@ class EnhancedSupabaseClient:
             fetch_type="all",
             use_cache=use_cache
         )
-        return result
+        return result if result else []
 
     @collect_metrics(operation_name="supabase_get_trending_topics")
     async def get_trending_topics(
@@ -417,7 +421,8 @@ class EnhancedSupabaseClient:
             """
             params = [min_score, limit]
 
-        return await self.execute_query(query, params, fetch_type="all", use_cache=use_cache)
+        result = await self.execute_query(query, params, fetch_type="all", use_cache=use_cache)
+        return result if result else []
 
     @collect_metrics(operation_name="supabase_insert_trending_topic")
     async def insert_trending_topic(self, topic: Dict[str, Any]) -> int:
@@ -440,7 +445,7 @@ class EnhancedSupabaseClient:
         ]
 
         result = await self.execute_query(query, params, fetch_type="one")
-        return result['id'] if result else None
+        return result['id'] if result else 0
 
     async def get_entity_mentions(
         self,
@@ -453,7 +458,8 @@ class EnhancedSupabaseClient:
         query = "SELECT * FROM get_entity_mentions($1, $2, $3) LIMIT $4"
         params = [entity, hours, min_score, limit]
 
-        return await self.execute_query(query, params, fetch_type="all", use_cache=True)
+        result = await self.execute_query(query, params, fetch_type="all", use_cache=True)
+        return result if result else []
 
     async def refresh_materialized_views(self, view_type: str = "all") -> None:
         """Refresh materialized views for updated data."""
@@ -544,7 +550,7 @@ class EnhancedSupabaseClient:
             )
 
             # Organize metrics by category
-            organized_metrics = {}
+            organized_metrics: Dict[str, List[Dict[str, Any]]] = {}
             for metric in metrics:
                 category = metric.get('metric_category', 'unknown')
                 if category not in organized_metrics:
@@ -576,7 +582,7 @@ class EnhancedSupabaseClient:
             )
 
             # Group by urgency
-            by_urgency = {'critical': [], 'high': [], 'medium': [], 'low': []}
+            by_urgency: Dict[str, List[Dict[str, Any]]] = {'critical': [], 'high': [], 'medium': [], 'low': []}
             for rec in recommendations:
                 urgency = rec.get('urgency', 'low')
                 if urgency in by_urgency:

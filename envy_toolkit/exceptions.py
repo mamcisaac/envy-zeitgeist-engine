@@ -321,6 +321,41 @@ class ProcessingError(EnvyBaseError):
         )
 
 
+class DatabaseError(EnvyBaseError):
+    """
+    Raised when database operations fail.
+
+    This includes connection errors, query failures, transaction errors,
+    or constraint violations.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        operation: Optional[str] = None,
+        query: Optional[str] = None,
+        error_code: Optional[str] = None,
+        **kwargs: Any
+    ) -> None:
+        context = kwargs.pop("context", {})
+        if operation:
+            context["operation"] = operation
+        if query:
+            context["query"] = query[:200]  # Truncate long queries
+
+        # Determine if error is transient
+        transient_indicators = ["connection", "timeout", "deadlock", "lock"]
+        is_transient = any(indicator in message.lower() for indicator in transient_indicators)
+        
+        super().__init__(
+            message=message,
+            error_code=error_code or "DATABASE_ERROR",
+            category=ErrorCategory.TRANSIENT if is_transient else ErrorCategory.PERMANENT,
+            context=context,
+            **kwargs
+        )
+
+
 class CircuitBreakerOpenError(EnvyBaseError):
     """
     Raised when a circuit breaker is open.

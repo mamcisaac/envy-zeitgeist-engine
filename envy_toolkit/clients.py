@@ -1,5 +1,6 @@
 import asyncio
 import os
+from datetime import datetime
 from typing import Any, Dict, List
 
 import aiohttp
@@ -149,7 +150,7 @@ class SupabaseClient:
     async def insert_trending_topic(self, topic: Dict[str, Any]) -> None:
         self.client.table("trending_topics").insert(topic).execute()
 
-    async def get_trending_topics_by_date_range(self, start_date, end_date, limit: int = 50) -> List[Dict[str, Any]]:
+    async def get_trending_topics_by_date_range(self, start_date: datetime, end_date: datetime, limit: int = 50) -> List[Dict[str, Any]]:
         """Get trending topics within a date range."""
         response = self.client.table("trending_topics")\
             .select("*")\

@@ -18,7 +18,7 @@ from loguru import logger
 
 from agents.zeitgeist_agent import ZeitgeistAgent
 
-from .schema import BriefConfig, GeneratedBrief, ScheduledBrief
+from .schema import BriefConfig, BriefType, GeneratedBrief, ScheduledBrief
 
 
 class BriefScheduler:
@@ -177,7 +177,7 @@ class BriefScheduler:
 
             # Create message
             msg = MIMEMultipart()
-            msg['From'] = sender_email
+            msg['From'] = sender_email or ''
             msg['To'] = ', '.join(recipients)
             msg['Subject'] = brief.title
 
@@ -188,6 +188,8 @@ class BriefScheduler:
             # Send email
             with smtplib.SMTP(smtp_server, smtp_port) as server:
                 server.starttls()
+                # We checked these are not None above
+                assert smtp_username is not None and smtp_password is not None
                 server.login(smtp_username, smtp_password)
                 server.send_message(msg)
 
@@ -299,7 +301,7 @@ class BriefScheduler:
             Configured daily schedule
         """
         config = BriefConfig(
-            brief_type="daily",
+            brief_type=BriefType.DAILY,
             max_topics=max_topics,
             sections=["summary", "trending", "interviews"]
         )
@@ -328,7 +330,7 @@ class BriefScheduler:
             Configured weekly schedule
         """
         config = BriefConfig(
-            brief_type="weekly",
+            brief_type=BriefType.WEEKLY,
             max_topics=max_topics,
             date_range_days=7,
             sections=["summary", "trending", "interviews", "charts"]

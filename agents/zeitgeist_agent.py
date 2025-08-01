@@ -273,14 +273,17 @@ Format as JSON with keys: headline, tl_dr, guests, sample_questions"""
         logger.info(f"Found {len(trending_topics)} trending topics for brief generation")
 
         # Convert to TrendingTopic objects if needed
+        topic_objects: List[TrendingTopic] = []
         if trending_topics and isinstance(trending_topics[0], dict):
-            trending_topics = [TrendingTopic(**topic) for topic in trending_topics]
+            topic_objects = [TrendingTopic(**topic) for topic in trending_topics]
+        else:
+            topic_objects = trending_topics  # type: ignore[assignment]
 
         # Select appropriate template
         template = self._get_template(config)
 
         # Generate content
-        template_kwargs = {}
+        template_kwargs: Dict[str, Any] = {}
         if config.brief_type == BriefType.DAILY:
             template_kwargs['date'] = end_date
         elif config.brief_type == BriefType.WEEKLY:
@@ -288,7 +291,7 @@ Format as JSON with keys: headline, tl_dr, guests, sample_questions"""
         elif config.brief_type == BriefType.EMAIL:
             template_kwargs['subject_prefix'] = config.subject_prefix
 
-        content = template.generate(trending_topics, **template_kwargs)
+        content = template.generate(topic_objects, **template_kwargs)
 
         # Create brief record
         brief = GeneratedBrief(
@@ -296,21 +299,21 @@ Format as JSON with keys: headline, tl_dr, guests, sample_questions"""
             format=config.format,
             title=config.title or self._generate_title(config, end_date),
             content=content,
-            topics_count=len(trending_topics),
+            topics_count=len(topic_objects),
             date_start=start_date,
             date_end=end_date,
             config=config.dict(),
             metadata={
                 "generated_by": "zeitgeist_agent",
                 "template_version": "1.0",
-                "topics_analyzed": len(trending_topics)
+                "topics_analyzed": len(topic_objects)
             }
         )
 
-        logger.info(f"Generated {config.brief_type} brief with {len(trending_topics)} topics")
+        logger.info(f"Generated {config.brief_type} brief with {len(topic_objects)} topics")
         return brief
 
-    def _get_template(self, config: BriefConfig):
+    def _get_template(self, config: BriefConfig) -> Any:
         """Get appropriate template based on configuration."""
         if config.brief_type == BriefType.DAILY:
             return DailyBriefTemplate()
