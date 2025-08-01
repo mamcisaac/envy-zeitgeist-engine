@@ -1,7 +1,7 @@
 """
 Monitoring DAG for Zeitgeist Pipeline.
 
-This DAG runs hourly to monitor the health and performance of the 
+This DAG runs hourly to monitor the health and performance of the
 zeitgeist data pipeline.
 """
 
@@ -11,7 +11,7 @@ from airflow import DAG  # type: ignore[import-not-found]
 from airflow.providers.postgres.operators.postgres import (
     PostgresOperator,  # type: ignore[import-not-found]
 )
-from monitoring.zeitgeist_monitoring import (
+from monitoring.zeitgeist_monitoring import (  # type: ignore[import-not-found]
     ALERT_CONFIGS,
     AlertingOperator,
     DataQualityOperator,
@@ -37,9 +37,9 @@ dag = DAG(
     tags=['zeitgeist', 'monitoring'],
     doc_md="""
     # Zeitgeist Monitoring DAG
-    
+
     Monitors the health and performance of the zeitgeist data pipeline.
-    
+
     ## Checks Performed
     - Data quality validation
     - Performance metrics collection
@@ -87,11 +87,11 @@ cleanup_old_data = PostgresOperator(
         SET deleted_at = NOW()
         WHERE created_at < NOW() - INTERVAL '30 days'
         AND deleted_at IS NULL;
-        
+
         -- Hard delete soft-deleted records older than 90 days
         DELETE FROM raw_mentions
         WHERE deleted_at < NOW() - INTERVAL '90 days';
-        
+
         -- Clean up orphaned trending topics
         DELETE FROM trending_topics
         WHERE created_at < NOW() - INTERVAL '90 days'

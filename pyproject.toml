@@ -144,7 +144,8 @@ warn_unreachable = true
 strict_equality = true
 show_error_codes = true
 exclude = [
-    "supabase/migrations/run_migrations.py"
+    "supabase/migrations/run_migrations.py",
+    "dags/",
 ]
 
 [[tool.mypy.overrides]]

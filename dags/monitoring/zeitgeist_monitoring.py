@@ -20,16 +20,16 @@ from airflow.providers.postgres.hooks.postgres import (
 from airflow.utils.decorators import apply_defaults  # type: ignore[import-not-found]
 
 
-class DataQualityOperator(BaseOperator):
+class DataQualityOperator(BaseOperator):  # type: ignore[misc]
     """
     Custom operator for data quality checks.
-    
+
     Validates that collected data meets minimum quality thresholds.
     """
 
     template_fields = ['check_date']
 
-    @apply_defaults
+    @apply_defaults  # type: ignore[misc]
     def __init__(
         self,
         postgres_conn_id: str = 'zeitgeist_postgres',
@@ -60,38 +60,38 @@ class DataQualityOperator(BaseOperator):
         # Check 1: Minimum mentions collected
         mention_count = hook.get_first(
             """
-            SELECT COUNT(*) 
-            FROM raw_mentions 
+            SELECT COUNT(*)
+            FROM raw_mentions
             WHERE DATE(created_at) = %s
             """,
             parameters=[self.check_date]
         )[0]
 
-        results['details']['mention_count'] = mention_count
+        results['details']['mention_count'] = mention_count  # type: ignore[index]
         if mention_count < self.min_mentions:
             results['checks_passed'] = False
-            results['details']['mention_count_error'] = f"Only {mention_count} mentions collected, minimum is {self.min_mentions}"
+            results['details']['mention_count_error'] = f"Only {mention_count} mentions collected, minimum is {self.min_mentions}"  # type: ignore[index]
 
         # Check 2: Source diversity
         source_count = hook.get_first(
             """
-            SELECT COUNT(DISTINCT source) 
-            FROM raw_mentions 
+            SELECT COUNT(DISTINCT source)
+            FROM raw_mentions
             WHERE DATE(created_at) = %s
             """,
             parameters=[self.check_date]
         )[0]
 
-        results['details']['source_count'] = source_count
+        results['details']['source_count'] = source_count  # type: ignore[index]
         if source_count < self.min_sources:
             results['checks_passed'] = False
-            results['details']['source_diversity_error'] = f"Only {source_count} sources, minimum is {self.min_sources}"
+            results['details']['source_diversity_error'] = f"Only {source_count} sources, minimum is {self.min_sources}"  # type: ignore[index]
 
         # Check 3: Data freshness
         oldest_mention = hook.get_first(
             """
-            SELECT MIN(timestamp) 
-            FROM raw_mentions 
+            SELECT MIN(timestamp)
+            FROM raw_mentions
             WHERE DATE(created_at) = %s
             """,
             parameters=[self.check_date]
@@ -99,27 +99,27 @@ class DataQualityOperator(BaseOperator):
 
         if oldest_mention:
             age_hours = (datetime.utcnow() - oldest_mention).total_seconds() / 3600
-            results['details']['oldest_mention_hours'] = age_hours
+            results['details']['oldest_mention_hours'] = age_hours  # type: ignore[index]
 
             if age_hours > self.max_age_hours:
                 results['checks_passed'] = False
-                results['details']['freshness_error'] = f"Oldest mention is {age_hours:.1f} hours old, maximum is {self.max_age_hours}"
+                results['details']['freshness_error'] = f"Oldest mention is {age_hours:.1f} hours old, maximum is {self.max_age_hours}"  # type: ignore[index]
 
         # Check 4: Error rate
         error_count = hook.get_first(
             """
-            SELECT COUNT(*) 
-            FROM pipeline_monitoring 
-            WHERE DATE(timestamp) = %s 
+            SELECT COUNT(*)
+            FROM pipeline_monitoring
+            WHERE DATE(timestamp) = %s
             AND status = 'error'
             """,
             parameters=[self.check_date]
         )[0]
 
-        results['details']['error_count'] = error_count
+        results['details']['error_count'] = error_count  # type: ignore[index]
         if error_count > 10:
             results['checks_passed'] = False
-            results['details']['error_rate_warning'] = f"{error_count} errors detected"
+            results['details']['error_rate_warning'] = f"{error_count} errors detected"  # type: ignore[index]
 
         # Log results
         self.log.info(f"Data quality check results: {json.dumps(results, indent=2)}")
@@ -130,12 +130,12 @@ class DataQualityOperator(BaseOperator):
         return results
 
 
-class PerformanceMonitoringOperator(BaseOperator):
+class PerformanceMonitoringOperator(BaseOperator):  # type: ignore[misc]
     """
     Tracks pipeline performance metrics.
     """
 
-    @apply_defaults
+    @apply_defaults  # type: ignore[misc]
     def __init__(
         self,
         postgres_conn_id: str = 'zeitgeist_postgres',
@@ -161,7 +161,7 @@ class PerformanceMonitoringOperator(BaseOperator):
         # Collection performance
         collection_stats = hook.get_first(
             """
-            SELECT 
+            SELECT
                 COUNT(*) as total_collected,
                 AVG(platform_score) as avg_score,
                 COUNT(DISTINCT source) as sources_used,
@@ -181,7 +181,7 @@ class PerformanceMonitoringOperator(BaseOperator):
         # Analysis performance
         analysis_stats = hook.get_first(
             """
-            SELECT 
+            SELECT
                 COUNT(*) as topics_identified,
                 AVG(score) as avg_topic_score,
                 MAX(score) as max_topic_score
@@ -233,12 +233,12 @@ class PerformanceMonitoringOperator(BaseOperator):
             self.log.error(f"Failed to send metrics: {e}")
 
 
-class AlertingOperator(BaseOperator):
+class AlertingOperator(BaseOperator):  # type: ignore[misc]
     """
     Handles alert routing based on severity and type.
     """
 
-    @apply_defaults
+    @apply_defaults  # type: ignore[misc]
     def __init__(
         self,
         alert_configs: List[Dict[str, Any]],

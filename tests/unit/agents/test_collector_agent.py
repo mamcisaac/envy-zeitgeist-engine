@@ -506,7 +506,7 @@ viral tiktok beef celeb edition"""
         ]
 
         # Mock collect_twitter generator
-        async def mock_twitter_generator(session):
+        async def mock_twitter_generator(session: Any) -> Any:
             for mention in expected_mentions:
                 yield mention
 
@@ -572,7 +572,7 @@ viral tiktok beef celeb edition"""
         for mention in mentions:
             assert mention.source == "reddit"
             assert mention.platform_score > 0
-            assert "subreddit" in mention.extras
+            assert mention.extras is not None and "subreddit" in mention.extras
 
     async def test_collect_reddit_api_failure(self) -> None:
         """Test Reddit collection handles API failures."""
@@ -593,7 +593,7 @@ viral tiktok beef celeb edition"""
         agent = CollectorAgent()
 
         # Mock some successes and some failures
-        def mock_search_side_effect(subreddit, query, limit):
+        def mock_search_side_effect(subreddit: str, query: str, limit: int) -> Any:
             if subreddit == "entertainment":
                 return [{
                     "id": "success_post",
@@ -663,7 +663,7 @@ viral tiktok beef celeb edition"""
             # Only check domain if mention was created (passed filtering)
             if domain:
                 assert mention.platform_score > 0
-                assert "source_name" in mention.extras
+                assert mention.extras is not None and "source_name" in mention.extras
 
         # Verify SerpAPI was called
         agent.serpapi.search_news.assert_called()
@@ -690,10 +690,10 @@ viral tiktok beef celeb edition"""
         mock_session = MagicMock()
 
         # Mock collectors that return coroutines
-        async def mock_collector_1(session):
+        async def mock_collector_1(session: Any) -> Any:
             return [create_test_mention(platform="youtube", score=0.7)]
 
-        async def mock_collector_2(session):
+        async def mock_collector_2(session: Any) -> Any:
             return [create_test_mention(platform="news", score=0.8)]
 
         # Mock the registry
@@ -713,10 +713,10 @@ viral tiktok beef celeb edition"""
         mock_session = MagicMock()
 
         # Mock collectors - one succeeds, one fails
-        async def mock_collector_success(session):
+        async def mock_collector_success(session: Any) -> Any:
             return [create_test_mention(platform="youtube", score=0.7)]
 
-        async def mock_collector_failure(session):
+        async def mock_collector_failure(session: Any) -> Any:
             raise Exception("Collector failed")
 
         mock_registry = [mock_collector_success, mock_collector_failure]

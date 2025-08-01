@@ -13,6 +13,7 @@ Features demonstrated:
 """
 
 import asyncio
+from typing import Any, List, Tuple
 
 from agents.zeitgeist_agent import ZeitgeistAgent
 from envy_toolkit.brief_scheduler import BriefScheduler
@@ -24,7 +25,7 @@ from envy_toolkit.schema import (
 )
 
 
-async def demo_basic_brief_generation():
+async def demo_basic_brief_generation() -> Tuple[Any, Any, Any]:
     """Demonstrate basic brief generation functionality."""
     print("🚀 Brief Generation Demo - Basic Functionality")
     print("=" * 50)
@@ -75,10 +76,11 @@ async def demo_basic_brief_generation():
     ]
 
     # Mock the database call to return our sample topics
-    async def mock_get_trending_topics_by_date_range(*args, **kwargs):
+    async def mock_get_trending_topics_by_date_range(*args: Any, **kwargs: Any) -> List[TrendingTopic]:
         return sample_topics
 
-    agent.supabase.get_trending_topics_by_date_range = mock_get_trending_topics_by_date_range
+    # Type ignore needed for dynamic method assignment
+    agent.supabase.get_trending_topics_by_date_range = mock_get_trending_topics_by_date_range  # type: ignore[assignment]
 
     print("\n📋 Generating Daily Brief...")
     daily_brief = await agent.generate_daily_brief(max_topics=10)
@@ -101,7 +103,7 @@ async def demo_basic_brief_generation():
     return daily_brief, weekly_brief, email_brief
 
 
-async def demo_custom_brief_configuration():
+async def demo_custom_brief_configuration() -> Any:
     """Demonstrate custom brief configurations."""
     print("\n🎨 Custom Brief Configuration Demo")
     print("=" * 40)
@@ -121,9 +123,12 @@ async def demo_custom_brief_configuration():
         )
     ]
 
-    agent.supabase.get_trending_topics_by_date_range = lambda *args, **kwargs: asyncio.create_task(
-        asyncio.coroutine(lambda: sample_topics)()
-    )
+    # Create proper async function for mocking
+    async def mock_custom_topics(*args: Any, **kwargs: Any) -> List[TrendingTopic]:
+        return sample_topics
+
+    # Type ignore needed for dynamic method assignment
+    agent.supabase.get_trending_topics_by_date_range = mock_custom_topics  # type: ignore[assignment]
 
     # Create custom configuration
     custom_config = BriefConfig(
@@ -151,7 +156,7 @@ async def demo_custom_brief_configuration():
     return custom_brief
 
 
-async def demo_scheduling_functionality():
+async def demo_scheduling_functionality() -> BriefScheduler:
     """Demonstrate automated scheduling capabilities."""
     print("\n⏰ Scheduling Demo")
     print("=" * 20)
@@ -207,7 +212,7 @@ async def demo_scheduling_functionality():
     return scheduler
 
 
-def demo_output_samples(daily_brief, weekly_brief, email_brief, custom_brief):
+def demo_output_samples(daily_brief: Any, weekly_brief: Any, email_brief: Any, custom_brief: Any) -> None:
     """Display sample outputs from generated briefs."""
     print("\n📄 Generated Brief Samples")
     print("=" * 30)
@@ -240,7 +245,7 @@ def demo_output_samples(daily_brief, weekly_brief, email_brief, custom_brief):
         print(f"  • Generated: {brief.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
 
 
-def demo_integration_examples():
+def demo_integration_examples() -> None:
     """Show examples of integrating brief generation."""
     print("\n🔗 Integration Examples")
     print("=" * 25)
@@ -288,7 +293,7 @@ schedule = ScheduledBrief(
     """)
 
 
-async def main():
+async def main() -> None:
     """Run the complete brief generation demo."""
     print("🎯 Zeitgeist Brief Generation Demo")
     print("Issue #6 Implementation")

@@ -6,7 +6,7 @@ Tests celebrity tracking functionality with mocked external calls.
 
 import asyncio
 from datetime import datetime
-from typing import List
+from typing import Any, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -375,7 +375,7 @@ class TestEnhancedCelebrityTracker:
         with patch.dict('sys.modules', {'serpapi': None}):
             with patch('builtins.__import__', side_effect=ImportError("No module named 'serpapi'")) as mock_import:
                 # Only raise ImportError for 'serpapi' imports
-                def import_side_effect(name, *args, **kwargs):
+                def import_side_effect(name: str, *args: Any, **kwargs: Any) -> Any:
                     if name == 'serpapi' or name.startswith('serpapi.'):
                         raise ImportError(f"No module named '{name}'")
                     return __import__(name, *args, **kwargs)

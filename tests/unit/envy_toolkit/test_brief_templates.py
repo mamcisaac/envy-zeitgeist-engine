@@ -5,6 +5,7 @@ Tests all brief template classes and their Markdown generation capabilities.
 """
 
 from datetime import datetime
+from typing import Any
 from unittest.mock import patch
 
 from envy_toolkit.brief_templates import (
@@ -461,7 +462,7 @@ class TestTemplateIntegration:
             assert brief.endswith('\n') or not brief.endswith(' ')
 
     @patch('envy_toolkit.brief_templates.datetime')
-    def test_timezone_handling(self, mock_datetime) -> None:
+    def test_timezone_handling(self, mock_datetime: Any) -> None:
         """Test that templates handle timezone correctly."""
         # Mock current time
         mock_now = datetime(2024, 3, 15, 14, 30, 0)

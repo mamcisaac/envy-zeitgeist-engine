@@ -1,6 +1,6 @@
 {
   "errors": [],
-  "generated_at": "2025-08-01T13:19:58Z",
+  "generated_at": "2025-08-01T13:45:16Z",
   "metrics": {
     "./agents/__init__.py": {
       "CONFIDENCE.HIGH": 0,
@@ -470,6 +470,19 @@
       "nosec": 0,
       "skipped_tests": 0
     },
+    "./scripts/validate_environment.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 78,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
     "./setup.py": {
       "CONFIDENCE.HIGH": 0,
       "CONFIDENCE.LOW": 0,
@@ -921,7 +934,7 @@
       "SEVERITY.LOW": 1798,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 19735,
+      "loc": 19813,
       "nosec": 0,
       "skipped_tests": 0
     }

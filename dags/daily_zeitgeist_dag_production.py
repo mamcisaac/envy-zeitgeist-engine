@@ -117,19 +117,19 @@ dag = DAG(
     sla_miss_callback=sla_miss_callback,
     doc_md="""
     # Daily Zeitgeist Pipeline
-    
+
     This DAG performs the following operations:
     1. **Health Check**: Verifies external services are available
     2. **Data Collection**: Runs collector agents in Docker containers
     3. **Quality Check**: Validates collected data meets thresholds
     4. **Analysis**: Runs zeitgeist analysis on collected data
     5. **Monitoring**: Tracks performance and alerts on failures
-    
+
     ## SLAs
     - Total pipeline: 3 hours
     - Collection phase: 1.5 hours
     - Analysis phase: 1 hour
-    
+
     ## Alerts
     - Email on failure/retry
     - Slack notifications for SLA misses

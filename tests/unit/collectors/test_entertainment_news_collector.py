@@ -391,7 +391,7 @@ class TestEntertainmentNewsCollector:
         collector.serpapi_key = "test-key"
 
         # Mock the import to raise ImportError when serpapi is imported
-        def mock_import(name, *args, **kwargs):
+        def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
             if name == 'serpapi' or name.startswith('serpapi.'):
                 raise ImportError(f"No module named '{name}'")
             return __import__(name, *args, **kwargs)

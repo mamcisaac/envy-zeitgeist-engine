@@ -22,16 +22,16 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 from loguru import logger
 
 
 class MigrationRunner:
     """Handles database migrations with state tracking and error recovery."""
 
-    def __init__(self, database_url: str, migrations_dir: str = None):
+    def __init__(self, database_url: str, migrations_dir: Optional[str] = None):
         self.database_url = database_url
         self.migrations_dir = Path(migrations_dir or Path(__file__).parent)
         self.lock_timeout = int(os.getenv("MIGRATION_LOCK_TIMEOUT", "300"))
@@ -133,7 +133,7 @@ class MigrationRunner:
             RETURNING id
         """, name, hash_value)
 
-        return migration_id
+        return int(migration_id)
 
     async def _record_migration_success(
         self,
@@ -312,7 +312,7 @@ class MigrationRunner:
             if conn:
                 await conn.close()
 
-    async def get_migration_status(self) -> Dict:
+    async def get_migration_status(self) -> Dict[str, Any]:
         """Get current migration status."""
         conn = None
 
@@ -371,7 +371,7 @@ def get_database_url() -> str:
     raise ValueError("DATABASE_URL or SUPABASE_URL + SUPABASE_DB_PASSWORD required")
 
 
-async def main():
+async def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Run database migrations")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be executed without running")

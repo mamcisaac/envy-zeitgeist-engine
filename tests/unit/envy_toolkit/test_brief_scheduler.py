@@ -6,17 +6,24 @@ Tests scheduling functionality for automated brief generation.
 
 import asyncio
 from datetime import datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from agents.zeitgeist_agent import ZeitgeistAgent
 from envy_toolkit.brief_scheduler import BriefScheduler, schedule_daily_brief
-from envy_toolkit.schema import BriefConfig, BriefType, GeneratedBrief, ScheduledBrief
+from envy_toolkit.schema import (
+    BriefConfig,
+    BriefFormat,
+    BriefType,
+    GeneratedBrief,
+    ScheduledBrief,
+)
 
 
 class TestBriefScheduler:
     """Test BriefScheduler functionality."""
 
-    def setup_method(self, method) -> None:
+    def setup_method(self, method: Any) -> None:
         """Set up test environment."""
         self.mock_agent = MagicMock(spec=ZeitgeistAgent)
         self.scheduler = BriefScheduler(self.mock_agent)
@@ -147,7 +154,7 @@ class TestBriefScheduler:
         # Mock agent methods
         mock_brief = GeneratedBrief(
             brief_type=BriefType.DAILY,
-            format="markdown",
+            format=BriefFormat.MARKDOWN,
             title="Test Brief",
             content="Test content",
             topics_count=1,
@@ -183,7 +190,7 @@ class TestBriefScheduler:
         """Test executing schedule without email or webhook."""
         mock_brief = GeneratedBrief(
             brief_type=BriefType.DAILY,
-            format="markdown",
+            format=BriefFormat.MARKDOWN,
             title="Test Brief",
             content="Test content",
             topics_count=1,
@@ -263,7 +270,7 @@ class TestBriefScheduler:
         """Test scheduler main loop."""
         with patch.object(self.scheduler, '_check_and_execute_schedules', new_callable=AsyncMock) as mock_check:
             # Start scheduler in background
-            task = asyncio.create_task(self.scheduler.start_scheduler(check_interval=0.1))
+            task = asyncio.create_task(self.scheduler.start_scheduler(check_interval=1))
 
             # Let it run for a short time
             await asyncio.sleep(0.25)
@@ -284,7 +291,7 @@ class TestBriefScheduler:
             mock_check.side_effect = Exception("Test error")
 
             # Start scheduler
-            task = asyncio.create_task(self.scheduler.start_scheduler(check_interval=0.1))
+            task = asyncio.create_task(self.scheduler.start_scheduler(check_interval=1))
 
             # Let it run briefly
             await asyncio.sleep(0.15)
@@ -302,12 +309,12 @@ class TestBriefScheduler:
 class TestEmailAndWebhookFunctionality:
     """Test email and webhook functionality."""
 
-    def setup_method(self, method) -> None:
+    def setup_method(self, method: Any) -> None:
         """Set up test environment."""
         self.scheduler = BriefScheduler()
         self.mock_brief = GeneratedBrief(
             brief_type=BriefType.DAILY,
-            format="markdown",
+            format=BriefFormat.MARKDOWN,
             title="Test Email Brief",
             content="# Test Content\n\nThis is test content.",
             topics_count=1,

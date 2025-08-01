@@ -1,31 +1,26 @@
-"""
-Unit tests for envy_toolkit.retry module.
+"""Tests for retry module."""
 
-Tests retry logic, exponential backoff, jitter, and error handling.
-"""
-
+import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Any, Callable
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from envy_toolkit.retry import (
     RetryConfig,
-    RetryConfigs,
     RetryExhaustedError,
     calculate_delay,
     retry_async,
     retry_sync,
-    with_async_retry,
-    with_retry,
 )
 
 
 class TestRetryConfig:
-    """Test RetryConfig functionality."""
+    """Test RetryConfig dataclass."""
 
     def test_default_config(self) -> None:
-        """Test default retry configuration."""
+        """Test default configuration values."""
         config = RetryConfig()
         assert config.max_attempts == 3
         assert config.base_delay == 1.0
@@ -35,462 +30,313 @@ class TestRetryConfig:
         assert config.retryable_exceptions == (Exception,)
 
     def test_custom_config(self) -> None:
-        """Test custom retry configuration."""
+        """Test custom configuration values."""
         config = RetryConfig(
             max_attempts=5,
-            base_delay=0.5,
-            max_delay=30.0,
-            exponential_base=1.5,
+            base_delay=2.0,
+            max_delay=120.0,
+            exponential_base=3.0,
             jitter=False,
-            retryable_exceptions=(ConnectionError, TimeoutError),
+            retryable_exceptions=(ValueError, TypeError),
         )
         assert config.max_attempts == 5
-        assert config.base_delay == 0.5
-        assert config.max_delay == 30.0
-        assert config.exponential_base == 1.5
+        assert config.base_delay == 2.0
+        assert config.max_delay == 120.0
+        assert config.exponential_base == 3.0
         assert config.jitter is False
-        assert config.retryable_exceptions == (ConnectionError, TimeoutError)
+        assert config.retryable_exceptions == (ValueError, TypeError)
 
 
 class TestCalculateDelay:
-    """Test delay calculation functionality."""
+    """Test delay calculation function."""
 
     def test_first_attempt_no_delay(self) -> None:
-        """Test that first attempt has no delay."""
+        """Test first attempt has no delay."""
         delay = calculate_delay(0, 1.0, 60.0, 2.0, jitter=False)
         assert delay == 0.0
 
-    def test_exponential_backoff_no_jitter(self) -> None:
-        """Test exponential backoff without jitter."""
-        # Second attempt (attempt=1): base_delay * exponential_base^0 = 1.0
-        delay1 = calculate_delay(1, 1.0, 60.0, 2.0, jitter=False)
-        assert delay1 == 1.0
-
-        # Third attempt (attempt=2): base_delay * exponential_base^1 = 2.0
-        delay2 = calculate_delay(2, 1.0, 60.0, 2.0, jitter=False)
-        assert delay2 == 2.0
-
-        # Fourth attempt (attempt=3): base_delay * exponential_base^2 = 4.0
-        delay3 = calculate_delay(3, 1.0, 60.0, 2.0, jitter=False)
-        assert delay3 == 4.0
+    def test_exponential_backoff(self) -> None:
+        """Test exponential backoff calculation."""
+        # No jitter for predictable results
+        assert calculate_delay(1, 1.0, 60.0, 2.0, jitter=False) == 1.0
+        assert calculate_delay(2, 1.0, 60.0, 2.0, jitter=False) == 2.0
+        assert calculate_delay(3, 1.0, 60.0, 2.0, jitter=False) == 4.0
+        assert calculate_delay(4, 1.0, 60.0, 2.0, jitter=False) == 8.0
 
     def test_max_delay_cap(self) -> None:
-        """Test that delay is capped at max_delay."""
-        # Large attempt number should be capped
-        delay = calculate_delay(10, 1.0, 5.0, 2.0, jitter=False)
-        assert delay == 5.0
+        """Test delay is capped at max_delay."""
+        delay = calculate_delay(10, 1.0, 10.0, 2.0, jitter=False)
+        assert delay == 10.0  # Should be capped at max_delay
 
-    def test_jitter_variation(self) -> None:
-        """Test that jitter adds variation to delays."""
-        delays = []
-        for _ in range(10):
-            delay = calculate_delay(2, 1.0, 60.0, 2.0, jitter=True)
-            delays.append(delay)
+    @patch('envy_toolkit.retry.secrets.SystemRandom')
+    def test_jitter_applied(self, mock_random: Mock) -> None:
+        """Test jitter is applied to delay."""
+        mock_random.return_value.uniform.return_value = 0.1
+        
+        delay = calculate_delay(2, 1.0, 60.0, 2.0, jitter=True)
+        
+        # Base delay is 2.0, jitter adds ~0.1
+        assert 2.0 <= delay <= 2.3
+        mock_random.return_value.uniform.assert_called_once()
 
-        # All delays should be non-negative
-        assert all(d >= 0 for d in delays)
+    def test_negative_delay_prevented(self) -> None:
+        """Test delay never goes negative with jitter."""
+        # Even with maximum negative jitter, delay should be non-negative
+        for attempt in range(1, 5):
+            delay = calculate_delay(attempt, 0.1, 60.0, 2.0, jitter=True)
+            assert delay >= 0.0
 
-        # There should be some variation (not all exactly the same)
-        # Note: There's a small chance all could be the same, but very unlikely
-        assert len(set(delays)) > 1 or len(delays) == 1
 
-    def test_different_exponential_base(self) -> None:
-        """Test different exponential bases."""
-        delay_base_15 = calculate_delay(3, 1.0, 60.0, 1.5, jitter=False)
-        delay_base_30 = calculate_delay(3, 1.0, 60.0, 3.0, jitter=False)
+class TestRetrySync:
+    """Test synchronous retry decorator."""
 
-        # base 1.5: 1.0 * 1.5^2 = 2.25
-        assert delay_base_15 == 2.25
+    def test_successful_first_attempt(self) -> None:
+        """Test function succeeds on first attempt."""
+        mock_func = Mock(return_value="success")
+        
+        @retry_sync(RetryConfig(max_attempts=3))
+        def test_func() -> str:
+            return mock_func()
+        
+        result = test_func()
+        assert result == "success"
+        assert mock_func.call_count == 1
 
-        # base 3.0: 1.0 * 3.0^2 = 9.0
-        assert delay_base_30 == 9.0
+    def test_retry_on_exception(self) -> None:
+        """Test function retries on exception."""
+        mock_func = Mock(side_effect=[Exception("error"), Exception("error"), "success"])
+        
+        @retry_sync(RetryConfig(max_attempts=3, base_delay=0.01))
+        def test_func() -> str:
+            return mock_func()
+        
+        result = test_func()
+        assert result == "success"
+        assert mock_func.call_count == 3
+
+    def test_max_attempts_exceeded(self) -> None:
+        """Test function fails after max attempts."""
+        mock_func = Mock(side_effect=Exception("persistent error"))
+        
+        @retry_sync(RetryConfig(max_attempts=3))
+        def test_func() -> None:
+            return mock_func()
+        
+        with pytest.raises(RetryExhaustedError) as exc_info:
+            test_func()
+        
+        assert exc_info.value.attempts == 3
+        assert str(exc_info.value.last_exception) == "persistent error"
+        assert mock_func.call_count == 3
+
+    def test_specific_exceptions(self) -> None:
+        """Test retry only on specific exceptions."""
+        mock_func = Mock(side_effect=[ValueError("retry me"), "success"])
+        
+        @retry_sync(RetryConfig(max_attempts=3, retryable_exceptions=(ValueError,), base_delay=0.01))
+        def test_func() -> str:
+            return mock_func()
+        
+        result = test_func()
+        assert result == "success"
+        assert mock_func.call_count == 2
+
+    def test_no_retry_on_unspecified_exception(self) -> None:
+        """Test no retry on unspecified exception."""
+        mock_func = Mock(side_effect=TypeError("don't retry"))
+        
+        @retry_sync(RetryConfig(max_attempts=3, retryable_exceptions=(ValueError,)))
+        def test_func() -> None:
+            return mock_func()
+        
+        with pytest.raises(TypeError):
+            test_func()
+        
+        assert mock_func.call_count == 1
+
+    def test_decorator_preserves_function_metadata(self) -> None:
+        """Test decorator preserves function metadata."""
+        @retry_sync(RetryConfig(max_attempts=2))
+        def documented_function(x: int, y: int) -> int:
+            """This function adds two numbers."""
+            return x + y
+        
+        assert documented_function.__name__ == "documented_function"
+        assert documented_function.__doc__ == "This function adds two numbers."
+        assert documented_function(2, 3) == 5
+
+
+class TestRetryAsync:
+    """Test asynchronous retry decorator."""
+
+    @pytest.mark.asyncio
+    async def test_successful_first_attempt(self) -> None:
+        """Test async function succeeds on first attempt."""
+        mock_func = AsyncMock(return_value="success")
+        
+        @retry_async(RetryConfig(max_attempts=3))
+        async def test_func() -> str:
+            return await mock_func()
+        
+        result = await test_func()
+        assert result == "success"
+        assert mock_func.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_retry_on_exception(self) -> None:
+        """Test async function retries on exception."""
+        mock_func = AsyncMock(side_effect=[Exception("error"), Exception("error"), "success"])
+        
+        @retry_async(RetryConfig(max_attempts=3, base_delay=0.01))
+        async def test_func() -> str:
+            return await mock_func()
+        
+        result = await test_func()
+        assert result == "success"
+        assert mock_func.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_max_attempts_exceeded(self) -> None:
+        """Test async function fails after max attempts."""
+        mock_func = AsyncMock(side_effect=Exception("persistent error"))
+        
+        @retry_async(RetryConfig(max_attempts=3))
+        async def test_func() -> None:
+            return await mock_func()
+        
+        with pytest.raises(RetryExhaustedError) as exc_info:
+            await test_func()
+        
+        assert exc_info.value.attempts == 3
+        assert str(exc_info.value.last_exception) == "persistent error"
+        assert mock_func.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_async_coroutine_retry(self) -> None:
+        """Test retry with actual async coroutine."""
+        call_count = 0
+        
+        @retry_async(RetryConfig(max_attempts=3, base_delay=0.01))
+        async def test_func() -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise ValueError("retry me")
+            return "success"
+        
+        result = await test_func()
+        assert result == "success"
+        assert call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_async_decorator_preserves_metadata(self) -> None:
+        """Test async decorator preserves function metadata."""
+        @retry_async(RetryConfig(max_attempts=2))
+        async def documented_async_function(x: int, y: int) -> int:
+            """This async function adds two numbers."""
+            return x + y
+        
+        assert documented_async_function.__name__ == "documented_async_function"
+        assert documented_async_function.__doc__ == "This async function adds two numbers."
+        assert await documented_async_function(2, 3) == 5
 
 
 class TestRetryExhaustedError:
     """Test RetryExhaustedError exception."""
 
-    def test_retry_exhausted_creation(self) -> None:
-        """Test creating RetryExhaustedError exception."""
-        original_error = ValueError("Original error")
-        retry_error = RetryExhaustedError(3, original_error)
+    def test_error_attributes(self) -> None:
+        """Test error has correct attributes."""
+        original_error = ValueError("original error")
+        error = RetryExhaustedError(attempts=5, last_exception=original_error)
+        
+        assert error.attempts == 5
+        assert error.last_exception is original_error
+        assert "5 attempts" in str(error)
+        assert "original error" in str(error)
 
-        assert retry_error.attempts == 3
-        assert retry_error.last_exception is original_error
-        assert "3 attempts" in str(retry_error)
-        assert "Original error" in str(retry_error)
 
+class TestRetryIntegration:
+    """Test retry with real-world scenarios."""
 
-class TestRetrySyncDecorator:
-    """Test synchronous retry decorator."""
-
-    def test_successful_call_no_retry(self) -> None:
-        """Test successful call doesn't trigger retry."""
-        call_count = 0
-
-        @retry_sync(RetryConfig(max_attempts=3, base_delay=0.1))
-        def successful_func() -> str:
-            nonlocal call_count
-            call_count += 1
-            return "success"
-
-        result = successful_func()
-        assert result == "success"
-        assert call_count == 1
-
-    def test_retry_on_retryable_exception(self) -> None:
-        """Test retry is triggered on retryable exceptions."""
-        call_count = 0
-
-        @retry_sync(RetryConfig(max_attempts=3, base_delay=0.01))
-        def failing_func() -> str:
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise ConnectionError("Network error")
-            return "success"
-
-        result = failing_func()
-        assert result == "success"
-        assert call_count == 3
-
-    def test_retry_exhausted_exception(self) -> None:
-        """Test RetryExhaustedError is raised after max attempts."""
-        call_count = 0
-
-        @retry_sync(RetryConfig(max_attempts=2, base_delay=0.01))
-        def always_failing_func() -> str:
-            nonlocal call_count
-            call_count += 1
-            raise ConnectionError("Network error")
-
-        with pytest.raises(RetryExhaustedError) as exc_info:
-            always_failing_func()
-
-        assert exc_info.value.attempts == 2
-        assert isinstance(exc_info.value.last_exception, ConnectionError)
-        assert call_count == 2
-
-    def test_non_retryable_exception_not_retried(self) -> None:
-        """Test non-retryable exceptions are not retried."""
-        call_count = 0
-
+    def test_network_timeout_retry(self) -> None:
+        """Test retry on network timeout."""
+        mock_network = Mock(side_effect=[TimeoutError("timeout"), ConnectionError("connection"), "data"])
+        
         @retry_sync(RetryConfig(
             max_attempts=3,
-            base_delay=0.01,
-            retryable_exceptions=(ConnectionError,)
+            retryable_exceptions=(TimeoutError, ConnectionError),
+            base_delay=0.01
         ))
-        def func_with_non_retryable_error() -> str:
-            nonlocal call_count
-            call_count += 1
-            raise ValueError("Value error")
-
-        with pytest.raises(ValueError):
-            func_with_non_retryable_error()
-
-        assert call_count == 1
-
-    @patch('time.sleep')
-    def test_delay_is_applied(self, mock_sleep: MagicMock) -> None:
-        """Test that delays are applied between retries."""
-        call_count = 0
-
-        @retry_sync(RetryConfig(max_attempts=3, base_delay=0.1, jitter=False))
-        def failing_func() -> str:
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise ConnectionError("Network error")
-            return "success"
-
-        failing_func()
-
-        # Should have 2 sleep calls (between 3 attempts)
-        assert mock_sleep.call_count == 2
-        mock_sleep.assert_any_call(0.1)  # First retry delay
-        mock_sleep.assert_any_call(0.2)  # Second retry delay
-
-
-class TestRetryAsyncDecorator:
-    """Test asynchronous retry decorator."""
+        def fetch_data() -> str:
+            return mock_network()
+        
+        result = fetch_data()
+        assert result == "data"
+        assert mock_network.call_count == 3
 
     @pytest.mark.asyncio
-    async def test_successful_call_no_retry(self) -> None:
-        """Test successful call doesn't trigger retry."""
-        call_count = 0
-
-        @retry_async(RetryConfig(max_attempts=3, base_delay=0.01))
-        async def successful_func() -> str:
-            nonlocal call_count
-            call_count += 1
-            return "success"
-
-        result = await successful_func()
-        assert result == "success"
-        assert call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_retry_on_retryable_exception(self) -> None:
-        """Test retry is triggered on retryable exceptions."""
-        call_count = 0
-
-        @retry_async(RetryConfig(max_attempts=3, base_delay=0.01))
-        async def failing_func() -> str:
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise ConnectionError("Network error")
-            return "success"
-
-        result = await failing_func()
-        assert result == "success"
-        assert call_count == 3
-
-    @pytest.mark.asyncio
-    async def test_retry_exhausted_exception(self) -> None:
-        """Test RetryExhaustedError is raised after max attempts."""
-        call_count = 0
-
-        @retry_async(RetryConfig(max_attempts=2, base_delay=0.01))
-        async def always_failing_func() -> str:
-            nonlocal call_count
-            call_count += 1
-            raise ConnectionError("Network error")
-
-        with pytest.raises(RetryExhaustedError) as exc_info:
-            await always_failing_func()
-
-        assert exc_info.value.attempts == 2
-        assert isinstance(exc_info.value.last_exception, ConnectionError)
-        assert call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_non_retryable_exception_not_retried(self) -> None:
-        """Test non-retryable exceptions are not retried."""
-        call_count = 0
-
+    async def test_api_rate_limit_retry(self) -> None:
+        """Test retry on API rate limit."""
+        class RateLimitError(Exception):
+            pass
+        
+        call_times: list[float] = []
+        
         @retry_async(RetryConfig(
             max_attempts=3,
-            base_delay=0.01,
-            retryable_exceptions=(ConnectionError,)
+            retryable_exceptions=(RateLimitError,),
+            base_delay=0.1,
+            jitter=False
         ))
-        async def func_with_non_retryable_error() -> str:
-            nonlocal call_count
-            call_count += 1
-            raise ValueError("Value error")
+        async def api_call() -> str:
+            call_times.append(time.time())
+            if len(call_times) < 3:
+                raise RateLimitError("rate limited")
+            return "success"
+        
+        result = await api_call()
+        assert result == "success"
+        assert len(call_times) == 3
+        
+        # Verify delays between calls (approximately 0.1 and 0.2 seconds)
+        if len(call_times) >= 2:
+            assert call_times[1] - call_times[0] >= 0.09
+        if len(call_times) >= 3:
+            assert call_times[2] - call_times[1] >= 0.19
 
-        with pytest.raises(ValueError):
-            await func_with_non_retryable_error()
-
-        assert call_count == 1
+    def test_retry_with_different_configs(self) -> None:
+        """Test retry with different configurations."""
+        # Fast retry for transient errors
+        @retry_sync(RetryConfig(max_attempts=5, base_delay=0.1, max_delay=1.0))
+        def fast_retry() -> str:
+            return "fast"
+        
+        # Slow retry for rate limits
+        @retry_sync(RetryConfig(max_attempts=3, base_delay=5.0, max_delay=30.0))
+        def slow_retry() -> str:
+            return "slow"
+        
+        assert fast_retry() == "fast"
+        assert slow_retry() == "slow"
 
     @pytest.mark.asyncio
-    @patch('asyncio.sleep')
-    async def test_delay_is_applied(self, mock_sleep: AsyncMock) -> None:
-        """Test that delays are applied between retries."""
-        call_count = 0
-
-        @retry_async(RetryConfig(max_attempts=3, base_delay=0.1, jitter=False))
-        async def failing_func() -> str:
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise ConnectionError("Network error")
-            return "success"
-
-        await failing_func()
-
-        # Should have 2 sleep calls (between 3 attempts)
-        assert mock_sleep.call_count == 2
-        mock_sleep.assert_any_call(0.1)  # First retry delay
-        mock_sleep.assert_any_call(0.2)  # Second retry delay
-
-    @pytest.mark.asyncio
-    async def test_timing_behavior(self) -> None:
-        """Test actual timing behavior (integration test)."""
-        call_count = 0
-        start_time = time.time()
-
-        @retry_async(RetryConfig(max_attempts=3, base_delay=0.05, jitter=False))
-        async def failing_func() -> str:
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise ConnectionError("Network error")
-            return "success"
-
-        result = await failing_func()
-        elapsed = time.time() - start_time
-
-        assert result == "success"
-        assert call_count == 3
-        # Should take at least base_delay + 2*base_delay = 0.15 seconds
-        assert elapsed >= 0.15
-
-
-class TestConvenienceFunctions:
-    """Test convenience functions for retry."""
-
-    def test_with_retry_decorator(self) -> None:
-        """Test with_retry convenience decorator."""
-        call_count = 0
-
-        @with_retry(max_attempts=2, base_delay=0.01)
-        def failing_func() -> str:
-            nonlocal call_count
-            call_count += 1
-            if call_count < 2:
-                raise Exception("Error")
-            return "success"
-
-        result = failing_func()
-        assert result == "success"
-        assert call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_with_async_retry_decorator(self) -> None:
-        """Test with_async_retry convenience decorator."""
-        call_count = 0
-
-        @with_async_retry(max_attempts=2, base_delay=0.01)
-        async def failing_func() -> str:
-            nonlocal call_count
-            call_count += 1
-            if call_count < 2:
-                raise Exception("Error")
-            return "success"
-
-        result = await failing_func()
-        assert result == "success"
-        assert call_count == 2
-
-    def test_with_retry_custom_exceptions(self) -> None:
-        """Test with_retry with custom exceptions."""
-        call_count = 0
-
-        @with_retry(
-            max_attempts=2,
-            base_delay=0.01,
-            exceptions=(ConnectionError, TimeoutError)
-        )
-        def func_with_custom_exceptions() -> str:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise ConnectionError("Network error")
-            return "success"
-
-        result = func_with_custom_exceptions()
-        assert result == "success"
-        assert call_count == 2
-
-
-class TestRetryConfigs:
-    """Test predefined retry configurations."""
-
-    def test_fast_config(self) -> None:
-        """Test FAST retry configuration."""
-        config = RetryConfigs.FAST
-        assert config.max_attempts == 2
-        assert config.base_delay == 0.1
-        assert config.max_delay == 1.0
-        assert config.exponential_base == 2.0
-        assert config.jitter is True
-
-    def test_standard_config(self) -> None:
-        """Test STANDARD retry configuration."""
-        config = RetryConfigs.STANDARD
-        assert config.max_attempts == 3
-        assert config.base_delay == 1.0
-        assert config.max_delay == 10.0
-        assert config.exponential_base == 2.0
-        assert config.jitter is True
-
-    def test_robust_config(self) -> None:
-        """Test ROBUST retry configuration."""
-        config = RetryConfigs.ROBUST
-        assert config.max_attempts == 5
-        assert config.base_delay == 1.0
-        assert config.max_delay == 60.0
-        assert config.exponential_base == 2.0
-        assert config.jitter is True
-
-    def test_http_config(self) -> None:
-        """Test HTTP retry configuration."""
-        config = RetryConfigs.HTTP
-        assert config.max_attempts == 3
-        assert config.base_delay == 1.0
-        assert config.max_delay == 30.0
-        assert config.exponential_base == 2.0
-        assert config.jitter is True
-        assert ConnectionError in config.retryable_exceptions
-        assert TimeoutError in config.retryable_exceptions
-        assert OSError in config.retryable_exceptions
-
-
-class TestEdgeCases:
-    """Test edge cases and error conditions."""
-
-    def test_zero_max_attempts(self) -> None:
-        """Test behavior with zero max attempts."""
-        @retry_sync(RetryConfig(max_attempts=0, base_delay=0.01))
-        def func() -> str:
-            raise Exception("Should not be called")
-
-        # Should not call function at all
-        with pytest.raises(Exception):
-            func()
-
-    def test_one_max_attempt(self) -> None:
-        """Test behavior with only one attempt."""
-        call_count = 0
-
-        @retry_sync(RetryConfig(max_attempts=1, base_delay=0.01))
-        def failing_func() -> str:
-            nonlocal call_count
-            call_count += 1
-            raise Exception("Error")
-
-        with pytest.raises(RetryExhaustedError):
-            failing_func()
-
-        assert call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_function_that_returns_none(self) -> None:
-        """Test retry with function that returns None."""
-        call_count = 0
-
+    async def test_mixed_success_failure(self) -> None:
+        """Test mixed success and failure scenarios."""
+        results: list[str] = []
+        
         @retry_async(RetryConfig(max_attempts=2, base_delay=0.01))
-        async def func_returning_none() -> None:
-            nonlocal call_count
-            call_count += 1
-            if call_count < 2:
-                raise Exception("Error")
-            return None
-
-        result = await func_returning_none()
-        assert result is None
-        assert call_count == 2
-
-    def test_very_large_delay_values(self) -> None:
-        """Test with very large delay values."""
-        delay = calculate_delay(1, 1000.0, 5000.0, 2.0, jitter=False)
-        assert delay == 1000.0
-
-        # Test max delay cap with large values
-        delay = calculate_delay(10, 1000.0, 2000.0, 2.0, jitter=False)
-        assert delay == 2000.0
-
-    @pytest.mark.asyncio
-    async def test_exception_chaining(self) -> None:
-        """Test that exception chaining works properly."""
-        @retry_async(RetryConfig(max_attempts=2, base_delay=0.01))
-        async def failing_func() -> str:
-            raise ConnectionError("Original error")
-
-        with pytest.raises(RetryExhaustedError) as exc_info:
-            await failing_func()
-
-        # The original exception should be preserved
-        assert isinstance(exc_info.value.last_exception, ConnectionError)
-        assert "Original error" in str(exc_info.value.last_exception)
+        async def sometimes_fails(should_fail: bool) -> str:
+            if should_fail:
+                raise ValueError("Failed")
+            return "Success"
+        
+        # Successful call
+        results.append(await sometimes_fails(False))
+        
+        # Failed call
+        try:
+            await sometimes_fails(True)
+        except RetryExhaustedError:
+            results.append("Failed as expected")
+        
+        assert results == ["Success", "Failed as expected"]

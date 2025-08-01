@@ -5,6 +5,7 @@ Tests the zeitgeist analysis agent with mocked dependencies.
 """
 
 from datetime import datetime, timedelta
+from typing import Dict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -915,7 +916,7 @@ class TestZeitgeistAgent:
         for m in cluster_mentions:
             all_entities.extend(m.get('entities', []))
 
-        entity_counts = {}
+        entity_counts: Dict[str, int] = {}
         for entity in all_entities:
             entity_counts[entity] = entity_counts.get(entity, 0) + 1
 

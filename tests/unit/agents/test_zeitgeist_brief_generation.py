@@ -5,6 +5,7 @@ Tests the extended brief generation methods added to ZeitgeistAgent.
 """
 
 from datetime import datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,7 +25,7 @@ class TestZeitgeistAgentBriefGeneration:
 
     @patch('agents.zeitgeist_agent.SupabaseClient')
     @patch('agents.zeitgeist_agent.LLMClient')
-    def setup_method(self, method, mock_llm: MagicMock, mock_supabase: MagicMock) -> None:
+    def setup_method(self, method: Any, mock_llm: MagicMock, mock_supabase: MagicMock) -> None:
         """Set up test environment for each test method."""
         self.agent = ZeitgeistAgent()
         self.mock_supabase = mock_supabase.return_value
@@ -164,7 +165,7 @@ class TestZeitgeistAgentBriefGeneration:
         """Test template selection with invalid type."""
         # First test that BriefConfig rejects invalid types
         with pytest.raises(ValueError):
-            BriefConfig(brief_type="invalid_type")
+            BriefConfig(brief_type="invalid_type")  # type: ignore[arg-type]
 
         # Test the agent's error handling with a manually constructed invalid config
         from unittest.mock import MagicMock

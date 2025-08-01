@@ -26,7 +26,7 @@ from supabase.migrations.run_migrations import (  # noqa: E402
 )
 
 
-async def main():
+async def main() -> None:
     """Main entry point for database updates."""
     parser = argparse.ArgumentParser(description="Update database schema")
     parser.add_argument(
