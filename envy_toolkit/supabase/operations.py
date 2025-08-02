@@ -465,32 +465,11 @@ class SupabaseOperations:
                 platform_score,
                 entities,
                 extras,
-                storage_tier,
+                'hot' as storage_tier,
                 NULL as ttl_expires,
                 created_at
             FROM raw_mentions
             WHERE timestamp >= $1
-            AND storage_tier = 'hot'
-            
-            UNION ALL
-            
-            SELECT 
-                id,
-                source as platform,
-                url,
-                title,
-                body,
-                timestamp,
-                platform_score,
-                entities,
-                extras,
-                storage_tier,
-                ttl_expires,
-                created_at
-            FROM warm_mentions
-            WHERE timestamp >= $1
-            AND ttl_expires > NOW()
-            
             ORDER BY timestamp DESC
             LIMIT $2
         """
@@ -534,11 +513,10 @@ class SupabaseOperations:
                     platform_score,
                     entities,
                     extras,
-                    storage_tier
+                    'hot' as storage_tier
                 FROM raw_mentions
                 WHERE timestamp >= $1
                 AND LOWER(source) = LOWER($2)
-                AND storage_tier = 'hot'
                 
                 UNION ALL
                 
@@ -552,7 +530,7 @@ class SupabaseOperations:
                     platform_score,
                     entities,
                     extras,
-                    storage_tier
+                    'warm' as storage_tier
                 FROM warm_mentions
                 WHERE timestamp >= $1
                 AND LOWER(source) = LOWER($2)

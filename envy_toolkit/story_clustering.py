@@ -155,6 +155,8 @@ class CrossPlatformStoryClustering:
     def __init__(self):
         self.engagement_calc = PlatformEngagementCalculator()
         self.min_cluster_size = 2
+        self.min_samples = 1  # Allow single-link clusters
+        self.cluster_selection_epsilon = 0.3  # More aggressive clustering
         self.min_eng_hot = 50
         self.velocity_window_min = 180
         self.half_life_hr = 12
@@ -398,24 +400,15 @@ class CrossPlatformStoryClustering:
         
         logger.info(f"Performing HDBSCAN clustering on {len(embeddings_array)} embeddings ({memory_mb:.1f}MB)")
         
-        # Perform HDBSCAN clustering with memory monitoring
-        try:
-            # Try with memory parameter (scikit-learn Memory object)
-            from sklearn.utils import Memory
-            memory = Memory(location=None, verbose=0)  # In-memory cache
-            clusterer = hdbscan.HDBSCAN(
-                min_cluster_size=self.min_cluster_size,
-                metric="euclidean",
-                cluster_selection_method="eom",
-                memory=memory
-            )
-        except (TypeError, ImportError):
-            # Fallback if memory parameter not supported
-            clusterer = hdbscan.HDBSCAN(
-                min_cluster_size=self.min_cluster_size,
-                metric="euclidean",
-                cluster_selection_method="eom"
-            )
+        # Perform HDBSCAN clustering with better parameters for story grouping
+        clusterer = hdbscan.HDBSCAN(
+            min_cluster_size=self.min_cluster_size,
+            min_samples=self.min_samples,
+            metric="cosine",  # Better for text embeddings
+            cluster_selection_method="eom",
+            cluster_selection_epsilon=self.cluster_selection_epsilon,
+            prediction_data=True
+        )
         
         cluster_labels = clusterer.fit_predict(embeddings_array)
         posts_df["cluster"] = cluster_labels

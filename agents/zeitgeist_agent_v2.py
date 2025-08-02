@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from envy_toolkit.clients import SupabaseClient
+from envy_toolkit.supabase import EnhancedSupabaseClient
 from envy_toolkit.embedding_cache import embedding_cache
 from envy_toolkit.logging_config import LogContext
 from envy_toolkit.metrics import collect_metrics, get_metrics_collector
@@ -182,7 +182,7 @@ class ZeitgeistAgentV2:
     """
     
     def __init__(self):
-        self.supabase = SupabaseClient()
+        self.supabase = EnhancedSupabaseClient()
         self.story_clustering = story_clustering
         self.embedding_cache = embedding_cache
         self.brief_formatter = ProducerBrief()
@@ -283,8 +283,12 @@ class ZeitgeistAgentV2:
     async def _fetch_recent_posts(self) -> List[Dict[str, Any]]:
         """Fetch recent posts from hot and warm storage."""
         try:
-            posts = await self.supabase.operations.get_hot_warm_posts(
-                self.supabase.database_url,
+            # Ensure operations is initialized
+            operations = await self.supabase._ensure_operations()
+            database_url = await self.supabase._get_database_url()
+            
+            posts = await operations.get_hot_warm_posts(
+                database_url,
                 hours=self.recent_window_hr,
                 limit=1000
             )
@@ -305,8 +309,11 @@ class ZeitgeistAgentV2:
     async def _get_previous_scores(self) -> Dict[str, float]:
         """Get previous story scores for momentum calculation."""
         try:
-            return await self.supabase.operations.get_previous_story_scores(
-                self.supabase.database_url,
+            operations = await self.supabase._ensure_operations()
+            database_url = await self.supabase._get_database_url()
+            
+            return await operations.get_previous_story_scores(
+                database_url,
                 lookback_hours=6
             )
         except Exception as e:
@@ -316,8 +323,11 @@ class ZeitgeistAgentV2:
     async def _get_momentum_trends(self) -> List[Dict[str, Any]]:
         """Get story momentum trends for insights."""
         try:
-            return await self.supabase.operations.get_story_momentum_trends(
-                self.supabase.database_url,
+            operations = await self.supabase._ensure_operations()
+            database_url = await self.supabase._get_database_url()
+            
+            return await operations.get_story_momentum_trends(
+                database_url,
                 hours_back=24,
                 min_appearances=2
             )
@@ -352,8 +362,11 @@ class ZeitgeistAgentV2:
                     "platforms_involved": list(story.platform_breakdown.keys())
                 })
             
-            await self.supabase.operations.store_story_history(
-                self.supabase.database_url,
+            operations = await self.supabase._ensure_operations()
+            database_url = await self.supabase._get_database_url()
+            
+            await operations.store_story_history(
+                database_url,
                 story_data,
                 run_timestamp
             )
