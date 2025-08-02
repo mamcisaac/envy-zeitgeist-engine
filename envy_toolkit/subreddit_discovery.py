@@ -339,4 +339,140 @@ class SubredditDiscovery:
                     integration_status VARCHAR(20) DEFAULT 'pending',
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
-            """\n            \n            await self.supabase.execute_query(create_table_query, use_cache=False)\n            \n            # Insert discoveries\n            insert_query = \"\"\"\n                INSERT INTO discovered_subreddits \n                (name, members, description, discovery_method, discovery_timestamp, \n                 related_shows, activity_score, validation_status, integration_status)\n                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)\n                ON CONFLICT (name) DO UPDATE SET\n                    members = EXCLUDED.members,\n                    description = EXCLUDED.description,\n                    activity_score = EXCLUDED.activity_score,\n                    validation_status = EXCLUDED.validation_status\n            \"\"\"\n            \n            stored_count = 0\n            for discovery in discoveries:\n                try:\n                    await self.supabase.execute_query(\n                        insert_query,\n                        [\n                            discovery.name,\n                            discovery.members,\n                            discovery.description,\n                            discovery.discovery_method,\n                            discovery.discovery_timestamp,\n                            discovery.related_shows,\n                            discovery.activity_score,\n                            discovery.validation_status,\n                            discovery.integration_status\n                        ],\n                        use_cache=False\n                    )\n                    stored_count += 1\n                except Exception as e:\n                    logger.error(f\"Failed to store discovery r/{discovery.name}: {e}\")\n            \n            logger.info(f\"Stored {stored_count} discoveries in database\")\n            return stored_count\n            \n        except Exception as e:\n            logger.error(f\"Failed to store discoveries: {e}\")\n            return 0\n    \n    async def _auto_integrate_discoveries(self) -> List[str]:\n        \"\"\"Automatically integrate approved discoveries into collection system.\"\"\"\n        try:\n            # Get approved discoveries that haven't been integrated\n            query = \"\"\"\n                SELECT name, members, activity_score, related_shows\n                FROM discovered_subreddits\n                WHERE validation_status = 'approved'\n                AND integration_status = 'pending'\n                ORDER BY activity_score DESC, members DESC\n                LIMIT 10\n            \"\"\"\n            \n            results = await self.supabase.execute_query(query)\n            integrated = []\n            \n            for row in results:\n                sub_name = row[0]\n                members = row[1]\n                activity_score = row[2]\n                \n                # Determine tier based on member count\n                if members >= 250000:\n                    tier = \"large\"\n                elif members >= 100000:\n                    tier = \"medium\"\n                elif members >= 25000:\n                    tier = \"small\"\n                else:\n                    tier = \"micro\"\n                \n                # For now, just log the integration recommendation\n                # In a full implementation, this would update the REALITY_TV_SUBREDDITS\n                logger.info(f\"AUTO-INTEGRATE: r/{sub_name} ({members:,} members, {tier} tier, score: {activity_score:.2f})\")\n                \n                # Mark as integrated\n                update_query = \"\"\"\n                    UPDATE discovered_subreddits \n                    SET integration_status = 'integrated'\n                    WHERE name = $1\n                \"\"\"\n                \n                await self.supabase.execute_query(update_query, [sub_name], use_cache=False)\n                integrated.append(sub_name)\n            \n            return integrated\n            \n        except Exception as e:\n            logger.error(f\"Auto-integration failed: {e}\")\n            return []\n    \n    async def get_discovery_status(self) -> Dict[str, any]:\n        \"\"\"Get current discovery system status.\"\"\"\n        try:\n            status_query = \"\"\"\n                SELECT \n                    validation_status,\n                    integration_status,\n                    COUNT(*) as count,\n                    AVG(activity_score) as avg_activity_score,\n                    SUM(members) as total_members\n                FROM discovered_subreddits\n                GROUP BY validation_status, integration_status\n                ORDER BY validation_status, integration_status\n            \"\"\"\n            \n            results = await self.supabase.execute_query(status_query)\n            \n            status = {\n                \"last_updated\": datetime.utcnow().isoformat(),\n                \"discovery_stats\": []\n            }\n            \n            for row in results:\n                status[\"discovery_stats\"].append({\n                    \"validation_status\": row[0],\n                    \"integration_status\": row[1],\n                    \"count\": row[2],\n                    \"avg_activity_score\": float(row[3]) if row[3] else 0.0,\n                    \"total_members\": row[4] or 0\n                })\n            \n            return status\n            \n        except Exception as e:\n            logger.error(f\"Failed to get discovery status: {e}\")\n            return {\"error\": str(e)}\n\n\n# Global instance\nsubreddit_discovery = SubredditDiscovery()
+            """
+            
+            await self.supabase.execute_query(create_table_query, use_cache=False)
+            
+            # Insert discoveries
+            insert_query = """
+                INSERT INTO discovered_subreddits 
+                (name, members, description, discovery_method, discovery_timestamp, 
+                 related_shows, activity_score, validation_status, integration_status)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                ON CONFLICT (name) DO UPDATE SET
+                    members = EXCLUDED.members,
+                    description = EXCLUDED.description,
+                    activity_score = EXCLUDED.activity_score,
+                    validation_status = EXCLUDED.validation_status
+            """
+            
+            stored_count = 0
+            for discovery in discoveries:
+                try:
+                    await self.supabase.execute_query(
+                        insert_query,
+                        [
+                            discovery.name,
+                            discovery.members,
+                            discovery.description,
+                            discovery.discovery_method,
+                            discovery.discovery_timestamp,
+                            discovery.related_shows,
+                            discovery.activity_score,
+                            discovery.validation_status,
+                            discovery.integration_status
+                        ],
+                        use_cache=False
+                    )
+                    stored_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to store discovery r/{discovery.name}: {e}")
+            
+            logger.info(f"Stored {stored_count} discoveries in database")
+            return stored_count
+            
+        except Exception as e:
+            logger.error(f"Failed to store discoveries: {e}")
+            return 0
+    
+    async def _auto_integrate_discoveries(self) -> List[str]:
+        """Automatically integrate approved discoveries into collection system."""
+        try:
+            # Get approved discoveries that haven't been integrated
+            query = """
+                SELECT name, members, activity_score, related_shows
+                FROM discovered_subreddits
+                WHERE validation_status = 'approved'
+                AND integration_status = 'pending'
+                ORDER BY activity_score DESC, members DESC
+                LIMIT 10
+            """
+            
+            results = await self.supabase.execute_query(query)
+            integrated = []
+            
+            for row in results:
+                sub_name = row[0]
+                members = row[1]
+                activity_score = row[2]
+                
+                # Determine tier based on member count
+                if members >= 250000:
+                    tier = "large"
+                elif members >= 100000:
+                    tier = "medium"
+                elif members >= 25000:
+                    tier = "small"
+                else:
+                    tier = "micro"
+                
+                # For now, just log the integration recommendation
+                # In a full implementation, this would update the REALITY_TV_SUBREDDITS
+                logger.info(f"AUTO-INTEGRATE: r/{sub_name} ({members:,} members, {tier} tier, score: {activity_score:.2f})")
+                
+                # Mark as integrated
+                update_query = """
+                    UPDATE discovered_subreddits 
+                    SET integration_status = 'integrated'
+                    WHERE name = $1
+                """
+                
+                await self.supabase.execute_query(update_query, [sub_name], use_cache=False)
+                integrated.append(sub_name)
+            
+            return integrated
+            
+        except Exception as e:
+            logger.error(f"Auto-integration failed: {e}")
+            return []
+    
+    async def get_discovery_status(self) -> Dict[str, any]:
+        """Get current discovery system status."""
+        try:
+            status_query = """
+                SELECT 
+                    validation_status,
+                    integration_status,
+                    COUNT(*) as count,
+                    AVG(activity_score) as avg_activity_score,
+                    SUM(members) as total_members
+                FROM discovered_subreddits
+                GROUP BY validation_status, integration_status
+                ORDER BY validation_status, integration_status
+            """
+            
+            results = await self.supabase.execute_query(status_query)
+            
+            status = {
+                "last_updated": datetime.utcnow().isoformat(),
+                "discovery_stats": []
+            }
+            
+            for row in results:
+                status["discovery_stats"].append({
+                    "validation_status": row[0],
+                    "integration_status": row[1],
+                    "count": row[2],
+                    "avg_activity_score": float(row[3]) if row[3] else 0.0,
+                    "total_members": row[4] or 0
+                })
+            
+            return status
+            
+        except Exception as e:
+            logger.error(f"Failed to get discovery status: {e}")
+            return {"error": str(e)}
+
+
+# Global instance
+subreddit_discovery = SubredditDiscovery()

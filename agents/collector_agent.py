@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import math
 from datetime import datetime
 from typing import Any, Dict, List
 
@@ -25,7 +24,6 @@ from envy_toolkit.heartbeat_monitor import heartbeat_monitor
 from envy_toolkit.logging_config import LogContext
 from envy_toolkit.metrics import collect_metrics, get_metrics_collector
 from envy_toolkit.schema import RawMention
-from envy_toolkit.shadow_keywords import shadow_keywords
 from envy_toolkit.storage_tiers import storage_tier_manager
 from envy_toolkit.subreddit_discovery import subreddit_discovery
 from envy_toolkit.twitter_free import collect_twitter
@@ -68,7 +66,7 @@ REALITY_TV_SUBREDDITS = {
     "survivor": {"members": 450000, "tier": "large"},
     "popheads": {"members": 350000, "tier": "large"},
     "rupaulsdragrace": {"members": 300000, "tier": "large"},
-    
+
     # Medium subreddits (100k-250k members)
     "celebrity": {"members": 200000, "tier": "medium"},
     "BravoRealHousewives": {"members": 200000, "tier": "medium"},
@@ -80,8 +78,8 @@ REALITY_TV_SUBREDDITS = {
     "vanderpumprules": {"members": 120000, "tier": "medium"},
     "SharkTank": {"members": 110000, "tier": "medium"},
     "popculture": {"members": 100000, "tier": "medium"},
-    
-    # Small subreddits (25k-100k members) 
+
+    # Small subreddits (25k-100k members)
     "BachelorNation": {"members": 95000, "tier": "small"},
     "90DayFiance": {"members": 90000, "tier": "small"},
     "BigBrother": {"members": 85000, "tier": "small"},
@@ -97,13 +95,13 @@ REALITY_TV_SUBREDDITS = {
     "celebwivesofnashville": {"members": 30000, "tier": "small"},
     "loveisblindonnetflix": {"members": 30000, "tier": "small"},
     "TooHotToHandle": {"members": 25000, "tier": "small"},
-    
+
     # Micro subreddits (<25k members)
     "TheTraitors": {"members": 20000, "tier": "micro"},
     "viallfiles": {"members": 15000, "tier": "micro"},
     "OutOfTheLoop": {"members": 15000, "tier": "micro"},
     "blindgossip": {"members": 12000, "tier": "micro"},
-    
+
     # Individual Housewives Franchises
     "rhobh": {"members": 45000, "tier": "small"},
     "rhony": {"members": 40000, "tier": "small"},
@@ -113,7 +111,7 @@ REALITY_TV_SUBREDDITS = {
     "rhop": {"members": 25000, "tier": "small"},
     "rhoslc": {"members": 30000, "tier": "small"},
     "rhom": {"members": 20000, "tier": "micro"},
-    
+
     # Dating/Relationship Shows
     "LoveIslandTV": {"members": 80000, "tier": "small"},
     "LoveIslandUK": {"members": 25000, "tier": "small"},
@@ -126,11 +124,11 @@ REALITY_TV_SUBREDDITS = {
     "MarriedAtFirstSight": {"members": 50000, "tier": "small"},
     "TemptationIsland": {"members": 20000, "tier": "micro"},
     "FBoyIsland": {"members": 15000, "tier": "micro"},
-    
+
     # Bachelor Franchise
     "TheBachelorette": {"members": 45000, "tier": "small"},
     "BachelorInParadise": {"members": 35000, "tier": "small"},
-    
+
     # Competition Shows
     "BigBrotherCanada": {"members": 25000, "tier": "small"},
     "TheTraitorsUS": {"members": 20000, "tier": "micro"},
@@ -142,30 +140,30 @@ REALITY_TV_SUBREDDITS = {
     "TheAmazingRace": {"members": 40000, "tier": "small"},
     "americanidol": {"members": 30000, "tier": "small"},
     "TheVoice": {"members": 25000, "tier": "small"},
-    
+
     # Food & Business Reality
     "Masterchef": {"members": 35000, "tier": "small"},
     "MasterChefAU": {"members": 25000, "tier": "small"},
     "bakeoff": {"members": 80000, "tier": "small"},
     "kitchennightmares": {"members": 45000, "tier": "small"},
     "DragonsDen": {"members": 20000, "tier": "micro"},
-    
-    # Bravo Extended Universe  
+
+    # Bravo Extended Universe
     "SummerHouseBravo": {"members": 30000, "tier": "small"},
     "SouthernCharm": {"members": 35000, "tier": "small"},
-    
+
     # Lifestyle/Makeover
     "queereye": {"members": 40000, "tier": "small"},
     "ProjectRunway": {"members": 25000, "tier": "small"},
     "Inkmaster": {"members": 20000, "tier": "micro"},
-    
+
     # Music Competition
     "TheMaskedSinger": {"members": 25000, "tier": "small"},
-    
+
     # International Editions (selective)
     "BigBrotherAU": {"members": 15000, "tier": "micro"},
     "MarriedAtFirstSightAU": {"members": 20000, "tier": "micro"},
-    
+
     # General Hubs (keep existing)
     "BoxOffice": {"members": 60000, "tier": "small"}
 }
@@ -173,7 +171,7 @@ REALITY_TV_SUBREDDITS = {
 # Micro-filtering thresholds for database protection
 MICRO_FILTER_THRESHOLDS = {
     "large": {"min_score": 20, "min_comments": 3},    # >250k members
-    "medium": {"min_score": 15, "min_comments": 2},   # 100k-250k members  
+    "medium": {"min_score": 15, "min_comments": 2},   # 100k-250k members
     "small": {"min_score": 10, "min_comments": 1},    # 25k-100k members
     "micro": {"min_score": 5, "min_comments": 1}      # <25k members
 }
@@ -207,17 +205,17 @@ def apply_micro_filter(post: Dict[str, Any], subreddit_tier: str) -> bool:
     """
     upvotes = post.get("score", 0)
     comments = post.get("num_comments", 0)
-    
+
     # Get minimum thresholds for this tier
     thresholds = MICRO_FILTER_THRESHOLDS[subreddit_tier]
-    
+
     # Basic signal test: meets minimum upvotes AND comments
     meets_threshold = upvotes >= thresholds["min_score"] and comments >= thresholds["min_comments"]
-    
+
     # OR has signal keywords (bypass thresholds for breaking content)
     title_text = (post.get("title", "") + " " + post.get("body", "")).lower()
     has_signal_keywords = any(keyword in title_text for keyword in SIGNAL_KEYWORDS)
-    
+
     return meets_threshold or has_signal_keywords
 
 
@@ -229,16 +227,16 @@ def apply_basic_filters(post: Dict[str, Any]) -> bool:
     # Calculate hours since post
     created_utc = post.get("created_utc", datetime.utcnow().timestamp())
     hours_since_post = (datetime.utcnow().timestamp() - created_utc) / 3600
-    
+
     # Drop NSFW or META tagged posts
     title = post.get("title", "").lower()
     if "nsfw" in title or "meta" in title:
         return False
-    
+
     # Drop extremely old posts (>24h)
     if hours_since_post > 24:
         return False
-    
+
     return True
 
 
@@ -343,7 +341,7 @@ class CollectorAgent:
             tier_counts = await storage_tier_manager.store_mentions_by_tier(enriched_mentions)
             with LogContext(tier_counts=tier_counts):
                 logger.info(f"Smart tier storage: Hot={tier_counts['hot']}, Warm={tier_counts['warm']}, Cold={tier_counts['cold']}")
-            
+
             # Update metrics for each tier
             metrics.increment_counter("mentions_stored_hot", tier_counts['hot'])
             metrics.increment_counter("mentions_stored_warm", tier_counts['warm'])
@@ -491,23 +489,23 @@ class CollectorAgent:
         try:
             # Google Trends US Entertainment (last 1 hour)
             trends_results = await self.serpapi.search_trends(
-                query="entertainment", 
-                geo="US", 
+                query="entertainment",
+                geo="US",
                 timeframe="now 1-H"
             )
-            
+
             # Store top-20 trending terms in raw_trends bucket
             for i, trend in enumerate(trends_results[:20]):
                 trend_title = trend.get("query", "")
                 trend_value = trend.get("value", 0)
-                
+
                 if trend_title:
                     mentions.append(RawMention(
                         id=f"trends_{hashlib.sha256(trend_title.encode()).hexdigest()[:8]}",
                         source="google_trends",
                         url=f"https://trends.google.com/trends/explore?q={trend_title.replace(' ', '+')}",
                         title=f"Trending: {trend_title}",
-                        body=f"Google Trends spike detected in US Entertainment category",
+                        body="Google Trends spike detected in US Entertainment category",
                         timestamp=datetime.utcnow(),
                         platform_score=min(1.0, trend_value / 100.0),  # Normalize to 0-1
                         entities=[trend_title],
@@ -519,13 +517,13 @@ class CollectorAgent:
                             "collection_type": "meta_sentinel"
                         }
                     ))
-                    
+
             logger.info(f"Collected {len(mentions)} trending entertainment terms")
             self._log_heartbeat_metrics(len(mentions), "google_trends")
-            
+
         except Exception as e:
             logger.error(f"Trending sentinels collection failed: {e}")
-            
+
         return mentions
 
     async def _collect_hashtag_surges(self, session: aiohttp.ClientSession) -> List[RawMention]:
@@ -535,18 +533,18 @@ class CollectorAgent:
         hashtag surges that won't hit Reddit for 6-12 hours. Pure data collection.
         """
         mentions = []
-        
+
         # Generate hashtag variants for all reality shows
         hashtag_queries = []
         for show in REALITY_SHOWS:
             clean_show = show.replace(" ", "").replace("USA", "").replace("US", "")
             hashtag_queries.extend([
                 f"#{clean_show}",
-                f"#{clean_show}Drama", 
+                f"#{clean_show}Drama",
                 f"#{clean_show}Tea",
                 f"#{clean_show}Scandal"
             ])
-        
+
         # Limit to top shows to avoid rate limits
         for hashtag in hashtag_queries[:20]:
             try:
@@ -554,7 +552,7 @@ class CollectorAgent:
                 hashtag_results = await self.serpapi.search_news(
                     f"site:tiktok.com OR site:twitter.com \"{hashtag}\" last 1 hour"
                 )
-                
+
                 for result in hashtag_results[:5]:  # Just raw counts
                     link = result.get("link", "")
                     if "tiktok.com" in link or "twitter.com" in link:
@@ -573,10 +571,10 @@ class CollectorAgent:
                                 "collection_type": "hashtag_surge"
                             }
                         ))
-                        
+
             except Exception as e:
                 logger.error(f"Hashtag surge collection failed for {hashtag}: {e}")
-                
+
         logger.info(f"Collected {len(mentions)} hashtag surge indicators")
         return mentions
 
@@ -616,7 +614,7 @@ class CollectorAgent:
             List of raw mentions from Reddit posts with minimal filtering
         """
         all_collected_posts = []
-        
+
         for subreddit_name, config in REALITY_TV_SUBREDDITS.items():
             try:
                 # Collect from multiple sorts for comprehensive coverage
@@ -626,20 +624,20 @@ class CollectorAgent:
                 new_posts = await self._fetch_reddit_with_fallback(
                     subreddit_name, sort="new", limit=30
                 )
-                
+
                 all_posts = hot_posts + new_posts
                 subreddit_tier = config["tier"]
                 collected_count = 0
-                
+
                 for post in all_posts:
                     # Apply basic quality filters
                     if not apply_basic_filters(post):
                         continue
-                    
+
                     # Apply micro-filter for database protection (minimal signal test)
                     if not apply_micro_filter(post, subreddit_tier):
                         continue
-                    
+
                     # Store all posts that pass basic filters
                     all_collected_posts.append({
                         "post": post,
@@ -647,31 +645,31 @@ class CollectorAgent:
                         "tier": subreddit_tier
                     })
                     collected_count += 1
-                        
+
                 logger.info(f"Collected {collected_count} posts from r/{subreddit_name} (tier: {subreddit_tier})")
-                        
+
             except Exception as e:
                 logger.error(f"Reddit collection failed for r/{subreddit_name}: {e}")
 
         # Convert all collected posts to RawMention (no scoring/ranking)
         seen_ids = set()
         mentions = []
-        
+
         for item in all_collected_posts:
             post = item["post"]
-            
+
             if post["id"] in seen_ids:
                 continue
             seen_ids.add(post["id"])
-            
+
             # Simple platform score based on basic engagement (no complex scoring)
             upvotes = post.get("score", 0)
             comments = post.get("num_comments", 0)
             basic_engagement = upvotes + (comments * 2)
-            
+
             # Normalize to 0.0-1.0 range for storage (divide by 10000 for Reddit)
             platform_score = min(1.0, basic_engagement / 10000.0)
-            
+
             mentions.append(RawMention(
                 id=f"reddit_{post['id']}",
                 source="reddit",
@@ -685,7 +683,7 @@ class CollectorAgent:
                     "subreddit": item["subreddit"],
                     "tier": item["tier"],
                     "upvotes": post["score"],
-                    "comments": post["num_comments"], 
+                    "comments": post["num_comments"],
                     "awards": post.get("num_awards", 0),
                     "upvote_ratio": post.get("upvote_ratio", 0.8),
                     "collection_method": "pure_harvest"
@@ -693,13 +691,13 @@ class CollectorAgent:
             ))
 
         logger.info(f"Pure harvest collected {len(mentions)} Reddit mentions")
-        
+
         # Log heartbeat metrics for monitoring
         self._log_heartbeat_metrics(len(mentions), "reddit")
-        
+
         # Run enhanced sub-auto-discovery after main collection
         await self._auto_discover_subreddits()
-        
+
         return mentions
 
     async def _fetch_reddit_with_fallback(self, subreddit: str, sort: str, limit: int) -> List[Dict[str, Any]]:
@@ -712,16 +710,16 @@ class CollectorAgent:
             # Primary: Official Reddit API via PRAW
             posts = await self.reddit.get_subreddit_posts(subreddit, sort, limit)
             return posts
-            
+
         except Exception as e:
             logger.warning(f"Primary Reddit API failed for r/{subreddit} ({sort}): {e}")
-            
+
             try:
                 # Fallback 1: Reddit JSON endpoint (no auth required)
                 logger.info(f"Attempting Reddit JSON fallback for r/{subreddit}")
-                
+
                 json_url = f"https://www.reddit.com/r/{subreddit}/{sort}.json?limit={limit}"
-                
+
                 async with aiohttp.ClientSession() as session:
                     async with session.get(json_url, headers={
                         'User-Agent': 'zeitgeist-collector/1.0'
@@ -729,7 +727,7 @@ class CollectorAgent:
                         if response.status == 200:
                             data = await response.json()
                             posts = []
-                            
+
                             for item in data.get('data', {}).get('children', []):
                                 post_data = item.get('data', {})
                                 posts.append({
@@ -743,22 +741,22 @@ class CollectorAgent:
                                     'num_awards': len(post_data.get('all_awardings', [])),
                                     'upvote_ratio': post_data.get('upvote_ratio', 0.5)
                                 })
-                            
+
                             logger.info(f"JSON fallback successful for r/{subreddit}: {len(posts)} posts")
                             return posts
                         else:
                             logger.warning(f"JSON fallback returned {response.status} for r/{subreddit}")
                             return []
-                
+
             except Exception as e2:
                 logger.warning(f"JSON fallback failed for r/{subreddit}: {e2}")
-                
+
                 try:
                     # Fallback 2: Pushshift (historical data)
                     logger.info(f"Attempting Pushshift fallback for r/{subreddit}")
-                    
+
                     # Pushshift API for recent posts
-                    pushshift_url = f"https://api.pushshift.io/reddit/search/submission/"
+                    pushshift_url = "https://api.pushshift.io/reddit/search/submission/"
                     params = {
                         'subreddit': subreddit,
                         'sort': 'desc',
@@ -766,13 +764,13 @@ class CollectorAgent:
                         'size': limit,
                         'after': '24h'  # Last 24 hours
                     }
-                    
+
                     async with aiohttp.ClientSession() as session:
                         async with session.get(pushshift_url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
                             if response.status == 200:
                                 data = await response.json()
                                 posts = []
-                                
+
                                 for post_data in data.get('data', []):
                                     posts.append({
                                         'id': post_data.get('id', ''),
@@ -785,13 +783,13 @@ class CollectorAgent:
                                         'num_awards': 0,  # Not available in Pushshift
                                         'upvote_ratio': 0.8  # Default estimate
                                     })
-                                
+
                                 logger.info(f"Pushshift fallback successful for r/{subreddit}: {len(posts)} posts")
                                 return posts
                             else:
                                 logger.warning(f"Pushshift returned {response.status} for r/{subreddit}")
                                 return []
-                
+
                 except Exception as e3:
                     logger.error(f"All Reddit fallbacks failed for r/{subreddit}: {e3}")
                     return []
@@ -812,15 +810,15 @@ class CollectorAgent:
                 success=success,
                 error_message=error_message
             )
-            
+
             # Update baseline for this source
             heartbeat_monitor.update_source_baseline(source, recalculate=True)
-            
+
             # Store metric for immediate trend analysis
             metrics = get_metrics_collector()
             metrics.increment_counter(f"{source}_posts_collected", posts_collected)
             metrics.set_gauge(f"{source}_last_collection_count", posts_collected)
-            
+
         except Exception as e:
             logger.error(f"Failed to log heartbeat metrics for {source}: {e}")
 
@@ -837,10 +835,10 @@ class CollectorAgent:
             if random.random() < 0.1:  # 10% chance per collection
                 logger.info("🔍 Running enhanced subreddit discovery session")
                 results = await subreddit_discovery.run_discovery_session()
-                
+
                 if results["total_found"] > 0:
                     logger.info(f"Enhanced discovery found {results['total_found']} subreddits, integrated {results['total_integrated']}")
-                    
+
                     # Log integration recommendations
                     for integration in results["integrations"]:
                         logger.info(f"AUTO-INTEGRATED: r/{integration} ready for next collection cycle")
@@ -848,17 +846,17 @@ class CollectorAgent:
                     logger.info("Enhanced discovery completed - no new subreddits found")
             else:
                 logger.debug("Skipping discovery session this cycle")
-                
+
         except Exception as e:
             logger.error(f"Enhanced discovery failed: {e}")
             # Fallback to basic discovery if enhanced fails
             await self._basic_discovery_fallback()
-    
+
     async def _basic_discovery_fallback(self) -> None:
         """Basic discovery fallback when enhanced system fails."""
         logger.info("Running basic discovery fallback")
         discovered_subs = set()
-        
+
         for show in REALITY_SHOWS[:3]:  # Limited fallback
             try:
                 search_url = "https://www.reddit.com/search.json"
@@ -867,28 +865,28 @@ class CollectorAgent:
                     'limit': 5,
                     'type': 'sr'
                 }
-                
+
                 async with aiohttp.ClientSession() as session:
                     async with session.get(search_url, params=params, headers={
                         'User-Agent': 'zeitgeist-collector/1.0'
                     }) as response:
                         if response.status == 200:
                             data = await response.json()
-                            
+
                             for item in data.get('data', {}).get('children', []):
                                 sub_data = item.get('data', {})
                                 sub_name = sub_data.get('display_name', '')
                                 sub_members = sub_data.get('subscribers', 0)
-                                
+
                                 if sub_members > 10000 and sub_name.lower() not in [s.lower() for s in REALITY_TV_SUBREDDITS.keys()]:
                                     discovered_subs.add(sub_name)
                                     logger.info(f"Basic discovery found: r/{sub_name} ({sub_members:,} members)")
-                
+
                 await asyncio.sleep(2)
-                
+
             except Exception as e:
                 logger.error(f"Basic discovery failed for {show}: {e}")
-        
+
         if discovered_subs:
             logger.info(f"Basic discovery found {len(discovered_subs)} subreddits: {list(discovered_subs)}")
 
@@ -896,18 +894,18 @@ class CollectorAgent:
         """Extract reality TV show and cast member entities from text."""
         entities = []
         content = (title + " " + body).lower()
-        
+
         # Check for show names
         for show in REALITY_SHOWS:
             if show.lower() in content:
                 entities.append(show)
-        
+
         # Add common reality TV terms if found
         reality_terms = ["love island", "bachelor", "bachelorette", "vanderpump", "housewives", "big brother", "survivor"]
         for term in reality_terms:
             if term in content and term not in [e.lower() for e in entities]:
                 entities.append(term.title())
-        
+
         return entities
 
     async def _collect_news(self, queries: List[str]) -> List[RawMention]:
@@ -950,7 +948,7 @@ class CollectorAgent:
                         domain = link.split("/")[2].lower()
                         if domain.startswith("www."):
                             domain = domain[4:]
-                    
+
                     if domain not in WHITELIST_DOMAINS:
                         continue
 
@@ -967,7 +965,7 @@ class CollectorAgent:
                         timestamp=datetime.utcnow(),  # News doesn't have exact timestamp
                         platform_score=platform_score,
                         entities=self._extract_reality_entities(
-                            result.get("title", ""), 
+                            result.get("title", ""),
                             result.get("snippet", "")
                         ),
                         extras={
@@ -1047,7 +1045,7 @@ class CollectorAgent:
         """Collect slow-burn stories from 48-hour archive sweep."""
         start_time = datetime.utcnow()
         mentions = []
-        
+
         try:
             # Import and use archive sweep collector
             from collectors.archive_sweep_collector import collect as archive_collect
@@ -1056,18 +1054,18 @@ class CollectorAgent:
             logger.error(f"Archive sweep collection failed: {e}")
             self._log_heartbeat_metrics(0, "archive_sweep", 0, False, str(e))
             return []
-        
+
         # Log heartbeat metrics
         collection_time = int((datetime.utcnow() - start_time).total_seconds() * 1000)
         self._log_heartbeat_metrics(len(mentions), "archive_sweep", collection_time)
-        
+
         return mentions
 
     async def _collect_serpapi_trending(self, session: aiohttp.ClientSession) -> List[RawMention]:
         """Collect trending data from multiple SerpAPI endpoints."""
         start_time = datetime.utcnow()
         mentions = []
-        
+
         try:
             # Import and use SerpAPI trending collector
             from collectors.serpapi_trending_collector import collect as serpapi_collect
@@ -1076,11 +1074,11 @@ class CollectorAgent:
             logger.error(f"SerpAPI trending collection failed: {e}")
             self._log_heartbeat_metrics(0, "serpapi_trending", 0, False, str(e))
             return []
-        
+
         # Log heartbeat metrics
         collection_time = int((datetime.utcnow() - start_time).total_seconds() * 1000)
         self._log_heartbeat_metrics(len(mentions), "serpapi_trending", collection_time)
-        
+
         return mentions
 
 

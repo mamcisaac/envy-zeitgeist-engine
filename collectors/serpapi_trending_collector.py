@@ -25,7 +25,7 @@ class SerpAPITrendingCollector(CollectorMixin):
     def __init__(self) -> None:
         """Initialize SerpAPI collector with configuration."""
         self.serpapi_key: Optional[str] = os.getenv("SERPAPI_API_KEY")
-        
+
         if not self.serpapi_key:
             logger.warning("SERPAPI_API_KEY not found - SerpAPI collection will be disabled")
             return
@@ -56,7 +56,7 @@ class SerpAPITrendingCollector(CollectorMixin):
                 "trending": True
             },
             "reddit_trending": {
-                "engine": "reddit", 
+                "engine": "reddit",
                 "subreddit": "all",
                 "sort": "hot",
                 "time": "day"
@@ -111,17 +111,17 @@ class SerpAPITrendingCollector(CollectorMixin):
         # Collect from each endpoint
         for endpoint_name, params in self.serpapi_endpoints.items():
             logger.info(f"Collecting trending data from {endpoint_name}...")
-            
+
             try:
                 mentions = await self._collect_from_endpoint(session, endpoint_name, params)
                 all_mentions.extend(mentions)
-                
+
                 # Log heartbeat metrics
                 logger.info(f"Heartbeat metric: {endpoint_name} collected {len(mentions)} trending items")
-                
+
                 # Rate limiting
                 await asyncio.sleep(2)
-                
+
             except Exception as e:
                 logger.error(f"Error collecting from {endpoint_name}: {e}")
                 continue
@@ -130,9 +130,9 @@ class SerpAPITrendingCollector(CollectorMixin):
         return all_mentions
 
     async def _collect_from_endpoint(
-        self, 
-        session: aiohttp.ClientSession, 
-        endpoint_name: str, 
+        self,
+        session: aiohttp.ClientSession,
+        endpoint_name: str,
         params: Dict[str, Any]
     ) -> List[RawMention]:
         """Collect data from a specific SerpAPI endpoint.
@@ -153,11 +153,11 @@ class SerpAPITrendingCollector(CollectorMixin):
 
             # Add API key to params
             search_params = {**params, "api_key": self.serpapi_key}
-            
+
             # Execute search
             search = GoogleSearch(search_params)
             results = search.get_dict()
-            
+
             # Process results based on endpoint type
             if endpoint_name == "youtube_trending":
                 mentions = self._process_youtube_results(results, endpoint_name)
@@ -198,7 +198,7 @@ class SerpAPITrendingCollector(CollectorMixin):
                 # Check viral threshold
                 thresholds = self.viral_thresholds["youtube"]
                 if views >= thresholds["views"] or likes >= thresholds["likes"]:
-                    
+
                     # Calculate platform score based on engagement velocity
                     age_hours = self._extract_age_hours(video.get("published_date", ""))
                     velocity = (likes + comments) / max(age_hours, 1)
@@ -243,7 +243,7 @@ class SerpAPITrendingCollector(CollectorMixin):
                 # Check viral threshold
                 thresholds = self.viral_thresholds["twitter"]
                 if retweets >= thresholds["retweets"] or likes >= thresholds["likes"]:
-                    
+
                     # Calculate platform score
                     age_hours = self._extract_age_hours(tweet.get("date", ""))
                     velocity = (retweets + likes + replies) / max(age_hours, 1)
@@ -290,7 +290,7 @@ class SerpAPITrendingCollector(CollectorMixin):
                 # Check viral threshold
                 thresholds = self.viral_thresholds["tiktok"]
                 if views >= thresholds["views"] or likes >= thresholds["likes"]:
-                    
+
                     # Calculate platform score
                     age_hours = self._extract_age_hours(video.get("published_date", ""))
                     velocity = (likes + shares) / max(age_hours, 1)
@@ -334,7 +334,7 @@ class SerpAPITrendingCollector(CollectorMixin):
                 # Check viral threshold
                 thresholds = self.viral_thresholds["instagram"]
                 if likes >= thresholds["likes"] or comments >= thresholds["comments"]:
-                    
+
                     # Calculate platform score
                     age_hours = self._extract_age_hours(post.get("date", ""))
                     velocity = (likes + comments * 3) / max(age_hours, 1)
@@ -379,7 +379,7 @@ class SerpAPITrendingCollector(CollectorMixin):
                 # Check viral threshold
                 thresholds = self.viral_thresholds["reddit"]
                 if upvotes >= thresholds["upvotes"] or comments >= thresholds["comments"]:
-                    
+
                     # Calculate platform score
                     age_hours = self._extract_age_hours(post.get("date", ""))
                     velocity = (upvotes + comments * 2) / max(age_hours, 1)
@@ -420,7 +420,7 @@ class SerpAPITrendingCollector(CollectorMixin):
                 # For news, platform score based on recency and source credibility
                 age_hours = self._extract_age_hours(article.get("date", ""))
                 source_name = article.get("source", "").lower()
-                
+
                 # Boost score for major entertainment sources
                 credibility_boost = 1.0
                 major_sources = ["variety", "deadline", "people", "entertainment", "tmz", "e!"]
@@ -453,9 +453,9 @@ class SerpAPITrendingCollector(CollectorMixin):
         """Parse number string with K/M suffixes."""
         if not value or not isinstance(value, str):
             return 0
-        
+
         value = value.replace(",", "").strip()
-        
+
         if value.endswith("K"):
             return int(float(value[:-1]) * 1000)
         elif value.endswith("M"):
@@ -472,7 +472,7 @@ class SerpAPITrendingCollector(CollectorMixin):
         """Extract age in hours from various date formats."""
         if not date_str:
             return 1.0
-        
+
         # Handle relative dates like "2 hours ago", "1 day ago"
         if "hour" in date_str:
             try:
@@ -492,14 +492,14 @@ class SerpAPITrendingCollector(CollectorMixin):
                 return minutes / 60
             except:
                 pass
-        
+
         return 1.0  # Default to 1 hour if can't parse
 
     def _parse_timestamp(self, date_str: str) -> datetime:
         """Parse timestamp from various formats."""
         if not date_str:
             return datetime.utcnow()
-        
+
         # Handle relative dates
         if "hour" in date_str:
             try:
@@ -519,17 +519,17 @@ class SerpAPITrendingCollector(CollectorMixin):
                 return datetime.utcnow() - timedelta(minutes=minutes)
             except:
                 pass
-        
+
         return datetime.utcnow()
 
     def _extract_entities(self, text: str) -> List[str]:
         """Extract reality TV entities from text."""
         entities = []
-        
+
         for keyword in self.reality_keywords:
             if keyword in text and keyword not in entities:
                 entities.append(keyword.title())
-        
+
         return entities[:10]  # Limit to top 10
 
 

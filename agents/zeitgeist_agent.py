@@ -4,9 +4,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 
-# Import the new V2 agent as the primary implementation
-from .zeitgeist_agent_v2 import ZeitgeistAgentV2
-
 # Keep legacy imports for backwards compatibility
 from envy_toolkit.brief_templates import (
     CustomBriefTemplate,
@@ -14,14 +11,15 @@ from envy_toolkit.brief_templates import (
     EmailBriefTemplate,
     WeeklyBriefTemplate,
 )
-from envy_toolkit.clients import LLMClient, SupabaseClient
-from envy_toolkit.producer_brief import producer_brief_generator, BriefFormat
 from envy_toolkit.schema import (
     BriefConfig,
     BriefType,
     GeneratedBrief,
     TrendingTopic,
 )
+
+# Import the new V2 agent as the primary implementation
+from .zeitgeist_agent_v2 import ZeitgeistAgentV2
 
 
 class ZeitgeistAgent:
@@ -47,7 +45,7 @@ class ZeitgeistAgent:
     def __init__(self) -> None:
         # Use the enhanced V2 agent as the backend
         self.v2_agent = ZeitgeistAgentV2()
-        
+
         # Keep legacy attributes for backwards compatibility
         self.supabase = self.v2_agent.supabase
         self.min_cluster_size = 2  # V2 uses smaller clusters for better story detection
@@ -73,16 +71,16 @@ class ZeitgeistAgent:
         6. Store results for future momentum calculation
         """
         logger.info("🧠 Starting ZeitgeistAgent V2 pipeline")
-        
+
         # Run the enhanced V2 analysis
         brief = await self.v2_agent.run_analysis()
-        
+
         # Store brief results for legacy compatibility
         self.last_brief = brief
-        
+
         # Convert V2 stories to legacy trending topics for backwards compatibility
         await self._convert_to_legacy_format(brief)
-        
+
         logger.info(f"✅ Analysis complete: {brief.get('total_stories', 0)} stories generated")
 
     async def _convert_to_legacy_format(self, brief: Dict[str, Any]) -> None:
@@ -99,10 +97,10 @@ class ZeitgeistAgent:
                     sample_questions=[],  # V2 doesn't generate questions
                     cluster_ids=[]  # V2 uses different clustering approach
                 )
-                
+
                 # Store to database using legacy method
                 # await self.supabase.insert_trending_topic(trending_topic.model_dump())
-                
+
         except Exception as e:
             logger.error(f"Failed to convert to legacy format: {e}")
 
@@ -111,17 +109,17 @@ class ZeitgeistAgent:
         """Legacy method - now uses V2 story clustering."""
         logger.warning("_cluster_mentions is deprecated - use V2 agent directly")
         return []
-        
+
     def _score_clusters(self, clusters: List[List[str]], mentions: List[Dict[str, Any]]) -> List[Tuple[List[str], float]]:
         """Legacy method - now uses V2 story metrics."""
         logger.warning("_score_clusters is deprecated - use V2 agent directly")
         return []
-        
+
     async def _forecast_trends(self, scored_clusters: List[Tuple[List[str], float]], mentions: List[Dict[str, Any]]) -> List[Tuple[List[str], float, str]]:
         """Legacy method - now uses V2 momentum tracking."""
         logger.warning("_forecast_trends is deprecated - use V2 agent directly")
         return []
-        
+
     async def _create_trending_topic(self, cluster_mentions: List[Dict[str, Any]], score: float, forecast: str) -> TrendingTopic:
         """Legacy method - now uses V2 producer brief generation."""
         logger.warning("_create_trending_topic is deprecated - use V2 agent directly")
@@ -348,58 +346,58 @@ async def main() -> None:
         >>> await main()
     """
     logger.info("🚀 Starting Zeitgeist Analysis Pipeline V2.0")
-    
+
     # Use the new V2 agent directly for best results
     agent = ZeitgeistAgentV2()
-    
+
     try:
         # Run full analysis
         brief = await agent.run_analysis()
-        
+
         # Generate different output formats
-        from envy_toolkit.producer_brief import producer_brief_generator, BriefFormat
-        
         # Save JSON brief
         import json
+
+        from envy_toolkit.producer_brief import BriefFormat, producer_brief_generator
         with open("/tmp/zeitgeist_brief.json", "w") as f:
             json.dump(brief, f, indent=2)
-        
+
         # Generate Slack format
         slack_brief = producer_brief_generator.generate_brief(
             [], BriefFormat.SLACK  # Empty stories for demo - would use actual story clusters
         )
-        
+
         with open("/tmp/zeitgeist_slack.json", "w") as f:
             json.dump(slack_brief, f, indent=2)
-        
+
         # Print summary
         print(f"\n🎬 ZEITGEIST BRIEF - {brief['total_stories']} Stories")
         print(f"📊 {brief.get('engagement_summary', {}).get('total_engagement', 0):,} Total Engagement")
         print(f"🌐 Platforms: {', '.join(brief.get('platform_breakdown', {}).keys())}")
-        
+
         if brief["total_stories"] > 0:
             print("\n📖 Top Stories:")
             for story in brief["stories"][:3]:
                 print(f"  {story['rank']}. {story['headline']}")
                 print(f"     💥 {story['engagement_metrics']['total']:,} engagement • {story['momentum']['direction']}")
                 print(f"     📱 {len(story['cluster_info']['platforms_involved'])} platforms • {story['cluster_info']['size']} posts")
-        
+
         # Show editorial alerts
         if brief.get("editorial_alerts"):
             print(f"\n🚨 {len(brief['editorial_alerts'])} Editorial Alerts")
             for alert in brief["editorial_alerts"][:2]:
                 print(f"  • {alert['type'].replace('_', ' ').title()}: {alert['story_headline'][:60]}...")
-        
+
         logger.info("📄 Briefs saved to /tmp/zeitgeist_*.json")
-        
+
     except Exception as e:
         logger.error(f"❌ Pipeline failed: {e}")
-        
+
         # Fallback to legacy agent for backwards compatibility
         logger.info("🔄 Falling back to legacy agent")
         legacy_agent = ZeitgeistAgent()
         await legacy_agent.run()
-    
+
     finally:
         # Cleanup resources
         await agent.cleanup_resources()

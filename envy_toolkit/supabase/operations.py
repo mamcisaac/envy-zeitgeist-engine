@@ -44,7 +44,7 @@ class SupabaseOperations:
             # SECURITY: Safely escape vector embeddings to prevent injection
             from ..security_patches import database_security
             embedding_str = database_security.escape_vector_embedding(embedding)
-            
+
             # SECURITY: Additional integrity validation
             if not database_security.validate_embedding_integrity(embedding_str):
                 logger.warning("Embedding failed integrity validation")
@@ -53,7 +53,7 @@ class SupabaseOperations:
                 embedding_str = None
         else:
             embedding_str = None
-            
+
         params = [
             mention.get("id"),
             mention.get("source"),
@@ -114,7 +114,7 @@ class SupabaseOperations:
                 # SECURITY: Safely escape vector embeddings to prevent injection
                 from ..security_patches import database_security
                 embedding_str = database_security.escape_vector_embedding(embedding)
-                
+
                 # SECURITY: Additional integrity validation
                 if not database_security.validate_embedding_integrity(embedding_str):
                     logger.warning("Embedding failed integrity validation")
@@ -123,7 +123,7 @@ class SupabaseOperations:
                     embedding_str = None
             else:
                 embedding_str = None
-                
+
             params_list.append([
                 mention.get("id"),
                 mention.get("source"),
@@ -343,7 +343,7 @@ class SupabaseOperations:
                 # SECURITY: Safely escape vector embeddings to prevent injection
                 from ..security_patches import database_security
                 embedding_str = database_security.escape_vector_embedding(embedding)
-                
+
                 # SECURITY: Additional integrity validation
                 if not database_security.validate_embedding_integrity(embedding_str):
                     logger.warning("Embedding failed integrity validation")
@@ -352,7 +352,7 @@ class SupabaseOperations:
                     embedding_str = None
             else:
                 embedding_str = None
-                
+
             params_list.append([
                 mention.get("id"),
                 mention.get("source"),
@@ -397,9 +397,9 @@ class SupabaseOperations:
             ORDER BY timestamp DESC
             LIMIT $2
         """
-        
+
         params = [cutoff_time, limit]
-        
+
         try:
             async with self.rate_limiter:
                 records = await self.circuit_breaker.call(
@@ -425,9 +425,9 @@ class SupabaseOperations:
             DELETE FROM warm_mentions
             WHERE ttl_expires <= $1
         """
-        
+
         params = [cutoff_time]
-        
+
         try:
             async with self.rate_limiter:
                 result = await self.circuit_breaker.call(
@@ -453,7 +453,7 @@ class SupabaseOperations:
     ) -> List[Dict[str, Any]]:
         """Get recent posts from both hot and warm storage for zeitgeist analysis."""
         since = datetime.utcnow() - timedelta(hours=hours)
-        
+
         query = """
             SELECT 
                 id,
@@ -473,9 +473,9 @@ class SupabaseOperations:
             ORDER BY timestamp DESC
             LIMIT $2
         """
-        
+
         params = [since, limit]
-        
+
         try:
             async with self.rate_limiter:
                 records = await self.circuit_breaker.call(
@@ -500,7 +500,7 @@ class SupabaseOperations:
     ) -> List[Dict[str, Any]]:
         """Get recent posts from specific platform across hot/warm storage."""
         since = datetime.utcnow() - timedelta(hours=hours)
-        
+
         query = """
             SELECT * FROM (
                 SELECT 
@@ -539,9 +539,9 @@ class SupabaseOperations:
             ORDER BY timestamp DESC
             LIMIT $3
         """
-        
+
         params = [since, platform, limit]
-        
+
         try:
             async with self.rate_limiter:
                 records = await self.circuit_breaker.call(
@@ -566,7 +566,7 @@ class SupabaseOperations:
         """Store story cluster history for momentum tracking."""
         if not story_clusters:
             return 0
-        
+
         query = """
             INSERT INTO story_history (
                 cluster_id,
@@ -582,7 +582,7 @@ class SupabaseOperations:
                 platforms_involved
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         """
-        
+
         params_list = []
         for story in story_clusters:
             # Generate content hash for tracking across runs
@@ -590,7 +590,7 @@ class SupabaseOperations:
             rep_url = story.get("representative_url", "")
             content_for_hash = f"{rep_title}:{rep_url}".lower().strip()
             content_hash = hashlib.sha256(content_for_hash.encode()).hexdigest()
-            
+
             params_list.append([
                 story.get("cluster_id"),
                 content_hash,
@@ -604,7 +604,7 @@ class SupabaseOperations:
                 rep_url,
                 story.get("platforms_involved", [])
             ])
-        
+
         try:
             async with self.rate_limiter:
                 affected = await self.circuit_breaker.call(
@@ -631,9 +631,9 @@ class SupabaseOperations:
             SELECT content_hash, score
             FROM get_previous_story_scores($1)
         """
-        
+
         params = [lookback_hours]
-        
+
         try:
             async with self.rate_limiter:
                 records = await self.circuit_breaker.call(
@@ -657,16 +657,16 @@ class SupabaseOperations:
         """Get current engagement medians for platform/context pairs."""
         if not platform_context_pairs:
             return {}
-        
+
         # Use the database function to get medians with fallbacks
         query = """
             SELECT 
                 $1 || ':' || $2 as median_key,
                 get_current_median($1, $2) as median_value
         """
-        
+
         params_list = [[platform, context] for platform, context in platform_context_pairs]
-        
+
         try:
             async with self.rate_limiter:
                 records = await self.circuit_breaker.call(
@@ -676,14 +676,14 @@ class SupabaseOperations:
                     params_list,
                     batch_size=100
                 )
-                
+
                 medians = {}
                 for batch_results in records:
                     if isinstance(batch_results, list):
                         for record in batch_results:
                             if len(record) >= 2:
                                 medians[record[0]] = float(record[1])
-                
+
                 return medians
         except (RetryExhaustedError, CircuitBreakerOpenError) as e:
             logger.error(f"Failed to get current medians: {e}")
@@ -710,9 +710,9 @@ class SupabaseOperations:
                 latest_platforms
             FROM get_story_momentum_trends($1, $2)
         """
-        
+
         params = [hours_back, min_appearances]
-        
+
         try:
             async with self.rate_limiter:
                 records = await self.circuit_breaker.call(
@@ -722,7 +722,7 @@ class SupabaseOperations:
                     params,
                     use_cache=True
                 )
-                
+
                 trends = []
                 for record in records:
                     trends.append({
@@ -736,7 +736,7 @@ class SupabaseOperations:
                         "latest_title": record[7],
                         "latest_platforms": record[8]
                     })
-                
+
                 return trends
         except (RetryExhaustedError, CircuitBreakerOpenError) as e:
             logger.error(f"Failed to get story momentum trends: {e}")

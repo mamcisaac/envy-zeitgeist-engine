@@ -30,8 +30,8 @@ class EnhancedSupabaseClient:
         self.config = get_api_config("supabase")
 
         # Supabase connection details
-        self.supabase_url = self.config.base_url or os.getenv("SUPABASE_URL")
-        self.supabase_key = self.config.api_key or os.getenv("SUPABASE_ANON_KEY")
+        self.supabase_url = self.config.get("supabase_url") or os.getenv("SUPABASE_URL")
+        self.supabase_key = self.config.get("supabase_key") or os.getenv("SUPABASE_ANON_KEY")
 
         if not self.supabase_url or not self.supabase_key:
             raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY required")

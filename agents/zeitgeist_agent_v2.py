@@ -9,23 +9,22 @@ Implements the enhanced story clustering pipeline with:
 - Diversity filtering and editorial intelligence alerts
 """
 
+import argparse
 import asyncio
-import math
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from envy_toolkit.supabase import EnhancedSupabaseClient
 from envy_toolkit.embedding_cache import embedding_cache
 from envy_toolkit.logging_config import LogContext
 from envy_toolkit.metrics import collect_metrics, get_metrics_collector
-from envy_toolkit.story_clustering import story_clustering, StoryCluster
-
+from envy_toolkit.story_clustering import StoryCluster, story_clustering
+from envy_toolkit.supabase import EnhancedSupabaseClient
 
 # Key constants for the zeitgeist pipeline
-RECENT_WINDOW_HR = 3          # Working set time window
+RECENT_WINDOW_HR = 24         # Working set time window (24 hours for stable metrics)
 VELOCITY_WINDOW_MIN = 180     # Used for engagement delta
 HALF_LIFE_HR = 12            # Recency decay factor
 MIN_ENG_HOT = 50             # Floor to keep cluster
@@ -40,11 +39,11 @@ KNOWN_ENTITIES = {
     "big brother", "survivor", "the challenge", "love is blind", "too hot to handle",
     "single's inferno", "physical 100", "the circle", "teen mom", "90 day fiance",
     "below deck", "southern charm", "summer house", "married at first sight",
-    
+
     # Major Networks/Platforms
     "bravo", "abc", "cbs", "fox", "nbc", "hulu", "netflix", "amazon prime",
     "hbo", "mtv", "vh1", "tlc", "e!", "wetv", "oxygen",
-    
+
     # Common Reality TV Terms
     "finale", "reunion", "drama", "breakup", "couple", "cast", "episode",
     "season", "elimination", "rose ceremony", "tribal council", "eviction"
@@ -53,10 +52,10 @@ KNOWN_ENTITIES = {
 
 class ProducerBrief:
     """Producer-ready brief formatter for zeitgeist stories."""
-    
+
     @staticmethod
     def format_story_brief(
-        stories: List[StoryCluster], 
+        stories: List[StoryCluster],
         run_timestamp: datetime,
         momentum_trends: List[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
@@ -70,19 +69,22 @@ class ProducerBrief:
             "platform_breakdown": defaultdict(int),
             "show_breakdown": defaultdict(int)
         }
-        
+
         # Process each story
         for rank, story in enumerate(stories, 1):
             # Calculate primary platform
             primary_platform = max(
-                story.platform_breakdown.items(), 
+                story.platform_breakdown.items(),
                 key=lambda x: x[1]
             )[0] if story.platform_breakdown else "unknown"
-            
+
+            # Use generated headline if available, otherwise fall back to title
+            headline = story.representative_post.get("generated_headline") or story.representative_post.get("title", "Untitled Story")
+
             # Format story entry
             story_entry = {
                 "rank": rank,
-                "headline": story.representative_post.get("title", "Untitled Story")[:100],
+                "headline": headline[:100],
                 "show": story.show_context,
                 "platform": primary_platform,
                 "cluster_size": story.metrics.cluster_size,
@@ -101,8 +103,8 @@ class ProducerBrief:
                         "title": post.get("title", "")[:80]
                     }
                     for post in sorted(
-                        story.posts, 
-                        key=lambda p: p.get("raw_eng", 0), 
+                        story.posts,
+                        key=lambda p: p.get("raw_eng", 0),
                         reverse=True
                     )[:3]
                 ],
@@ -113,36 +115,36 @@ class ProducerBrief:
                     f"Momentum: {story.metrics.momentum_direction}"
                 )
             }
-            
+
             brief["stories"].append(story_entry)
             brief["platform_breakdown"][primary_platform] += 1
             brief["show_breakdown"][story.show_context] += 1
-        
+
         # Add editorial alerts for unknown entities
         if stories:
             brief["editorial_alerts"] = ProducerBrief._detect_unknown_entities(stories)
-        
+
         # Add momentum insights
         if momentum_trends:
             brief["momentum_insights"] = ProducerBrief._format_momentum_insights(momentum_trends)
-        
+
         return brief
-    
+
     @staticmethod
     def _detect_unknown_entities(stories: List[StoryCluster]) -> List[Dict[str, Any]]:
         """Detect unknown entities in high-engagement stories."""
         alerts = []
-        
+
         for story in stories:
             if story.metrics.eng_total > 2000:  # High engagement threshold
                 # Extract words from representative post
                 title = story.representative_post.get("title", "").lower()
                 words = set(title.split())
-                
+
                 # Remove common words and find unknowns
                 unknown_words = words - KNOWN_ENTITIES
                 unknown_words = {w for w in unknown_words if len(w) > 3 and w.isalpha()}
-                
+
                 if unknown_words:
                     alerts.append({
                         "type": "unknown_entity",
@@ -152,15 +154,15 @@ class ProducerBrief:
                         "platforms": list(story.platform_breakdown.keys()),
                         "recommendation": "Editorial review recommended for potential breaking story"
                     })
-        
+
         return alerts
-    
+
     @staticmethod
     def _format_momentum_insights(trends: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Format momentum trend insights."""
         building = [t for t in trends if t["momentum_direction"] == "building ↑"]
         cooling = [t for t in trends if t["momentum_direction"] == "cooling ↓"]
-        
+
         return {
             "building_stories": len(building),
             "cooling_stories": len(cooling),
@@ -180,19 +182,19 @@ class ZeitgeistAgentV2:
     - Editorial intelligence alerts
     - Diversity filtering for balanced coverage
     """
-    
-    def __init__(self):
+
+    def __init__(self, hours: Optional[int] = None):
         self.supabase = EnhancedSupabaseClient()
         self.story_clustering = story_clustering
         self.embedding_cache = embedding_cache
         self.brief_formatter = ProducerBrief()
-        
+
         # Pipeline configuration
-        self.recent_window_hr = RECENT_WINDOW_HR
+        self.recent_window_hr = hours or RECENT_WINDOW_HR
         self.min_eng_hot = MIN_ENG_HOT
         self.max_stories_total = MAX_STORIES_TOTAL
         self.max_stories_per_show = MAX_STORIES_PER_SHOW
-    
+
     @collect_metrics(operation_name="zeitgeist_full_pipeline")
     async def run_analysis(self) -> Dict[str, Any]:
         """
@@ -210,39 +212,39 @@ class ZeitgeistAgentV2:
             Producer-ready brief with stories and insights
         """
         run_timestamp = datetime.utcnow()
-        
+
         with LogContext(operation="zeitgeist_analysis", run_timestamp=run_timestamp.isoformat()):
             logger.info("🧠 Starting Zeitgeist Analysis V2.0")
-            
+
             try:
                 # Stage 1: Fetch recent posts across all platforms
                 posts = await self._fetch_recent_posts()
-                
+
                 if len(posts) < 10:
                     logger.warning(f"Insufficient posts for analysis: {len(posts)}")
                     return self._empty_brief(run_timestamp, "insufficient_data")
-                
+
                 logger.info(f"📊 Analyzing {len(posts)} posts across platforms")
-                
+
                 # Stage 2: Get previous scores for momentum calculation
                 previous_scores = await self._get_previous_scores()
-                
+
                 # Stage 3: Perform story clustering with error recovery
                 try:
                     story_clusters = await self.story_clustering.cluster_stories(
                         posts, previous_scores
                     )
-                    
+
                     if not story_clusters:
                         logger.warning("No story clusters generated")
                         return self._empty_brief(run_timestamp, "no_clusters")
-                        
+
                 except MemoryError as e:
                     logger.error(f"Memory exhaustion during clustering: {e}")
                     # Fallback: Try with smaller dataset
                     limited_posts = posts[:1000]  # Reduce dataset size
                     logger.info(f"Retrying clustering with {len(limited_posts)} posts")
-                    
+
                     try:
                         story_clusters = await self.story_clustering.cluster_stories(
                             limited_posts, previous_scores
@@ -250,94 +252,121 @@ class ZeitgeistAgentV2:
                     except Exception as fallback_error:
                         logger.error(f"Fallback clustering also failed: {fallback_error}")
                         return self._empty_brief(run_timestamp, "clustering_failed", str(fallback_error))
-                        
+
                 except Exception as e:
+                    import traceback
                     logger.error(f"Clustering failed: {e}")
+                    logger.error(f"Traceback: {traceback.format_exc()}")
                     return self._empty_brief(run_timestamp, "clustering_error", str(e))
-                
+
                 logger.info(f"📖 Generated {len(story_clusters)} story clusters")
-                
+
                 # Stage 4: Get momentum trends for insights
                 momentum_trends = await self._get_momentum_trends()
-                
+
                 # Stage 5: Generate producer brief
                 brief = self.brief_formatter.format_story_brief(
                     story_clusters, run_timestamp, momentum_trends
                 )
-                
+
                 # Stage 6: Store story history for future momentum tracking
                 await self._store_story_history(story_clusters, run_timestamp)
-                
+
                 # Record success metrics
                 get_metrics_collector().increment_counter("zeitgeist_successful_runs")
                 get_metrics_collector().observe_histogram("stories_generated", len(story_clusters))
-                
+
                 logger.info(f"✅ Zeitgeist analysis complete: {len(story_clusters)} stories generated")
                 return brief
-                
+
             except Exception as e:
                 logger.error(f"❌ Zeitgeist analysis failed: {e}")
                 get_metrics_collector().increment_counter("zeitgeist_failed_runs")
                 return self._empty_brief(run_timestamp, "analysis_error", str(e))
-    
+
     async def _fetch_recent_posts(self) -> List[Dict[str, Any]]:
         """Fetch recent posts from hot and warm storage."""
         try:
-            # Ensure operations is initialized
-            operations = await self.supabase._ensure_operations()
-            database_url = await self.supabase._get_database_url()
-            
-            posts = await operations.get_hot_warm_posts(
-                database_url,
-                hours=self.recent_window_hr,
-                limit=1000
-            )
-            
+            # Use direct query instead of operations
+            since = datetime.utcnow() - timedelta(hours=self.recent_window_hr)
+
+            query = """
+                SELECT 
+                    id,
+                    source as platform,
+                    url,
+                    title,
+                    body,
+                    timestamp,
+                    platform_score,
+                    entities,
+                    extras,
+                    'hot' as storage_tier,
+                    NULL as ttl_expires,
+                    created_at
+                FROM raw_mentions
+                WHERE timestamp >= $1
+                ORDER BY timestamp DESC
+                LIMIT 1000
+            """
+
+            result = await self.supabase.execute_query(query, [since])
+
+            # Convert to list of dicts if needed
+            posts = []
+            if result:
+                for record in result:
+                    post = dict(record)
+                    # Parse JSON fields if they are strings
+                    if isinstance(post.get('extras'), str):
+                        try:
+                            import json
+                            post['extras'] = json.loads(post['extras'])
+                        except (json.JSONDecodeError, TypeError):
+                            post['extras'] = {}
+                    
+                    if isinstance(post.get('entities'), str):
+                        try:
+                            import json
+                            post['entities'] = json.loads(post['entities'])
+                        except (json.JSONDecodeError, TypeError):
+                            post['entities'] = []
+                    
+                    posts.append(post)
+                logger.info(f"Fetched {len(posts)} posts from database")
+            else:
+                logger.warning("Query returned no results")
+
             # Log platform breakdown
             platform_counts = defaultdict(int)
             for post in posts:
                 platform = post.get("platform", "unknown")
                 platform_counts[platform] += 1
-            
+
             logger.info(f"Platform breakdown: {dict(platform_counts)}")
             return posts
-            
+
         except Exception as e:
             logger.error(f"Failed to fetch recent posts: {e}")
             return []
-    
+
     async def _get_previous_scores(self) -> Dict[str, float]:
         """Get previous story scores for momentum calculation."""
-        try:
-            operations = await self.supabase._ensure_operations()
-            database_url = await self.supabase._get_database_url()
-            
-            return await operations.get_previous_story_scores(
-                database_url,
-                lookback_hours=6
-            )
-        except Exception as e:
-            logger.error(f"Failed to get previous scores: {e}")
-            return {}
-    
+        # TODO: Implement get_previous_story_scores in database
+        # For now, return empty dict to allow momentum to be calculated as "new"
+        logger.info("Previous scores not available, all stories will show as 'new'")
+        return {}
+
     async def _get_momentum_trends(self) -> List[Dict[str, Any]]:
         """Get story momentum trends for insights."""
-        try:
-            operations = await self.supabase._ensure_operations()
-            database_url = await self.supabase._get_database_url()
-            
-            return await operations.get_story_momentum_trends(
-                database_url,
-                hours_back=24,
-                min_appearances=2
-            )
-        except Exception as e:
-            logger.error(f"Failed to get momentum trends: {e}")
-            return []
-    
+        # TODO: Implement get_story_momentum_trends in database
+        # For now, return empty list
+        logger.info("Momentum trends not available")
+        return []
+
     async def _store_story_history(
-        self, 
-        story_clusters: List[StoryCluster], 
+        self,
+        story_clusters: List[StoryCluster],
         run_timestamp: datetime
     ) -> None:
         """Store story cluster history for future momentum tracking."""
@@ -346,10 +375,10 @@ class ZeitgeistAgentV2:
             story_data = []
             for story in story_clusters:
                 primary_platform = max(
-                    story.platform_breakdown.items(), 
+                    story.platform_breakdown.items(),
                     key=lambda x: x[1]
                 )[0] if story.platform_breakdown else "unknown"
-                
+
                 story_data.append({
                     "cluster_id": story.cluster_id,
                     "score": story.metrics.score,
@@ -361,23 +390,18 @@ class ZeitgeistAgentV2:
                     "representative_url": story.representative_post.get("url", ""),
                     "platforms_involved": list(story.platform_breakdown.keys())
                 })
-            
-            operations = await self.supabase._ensure_operations()
-            database_url = await self.supabase._get_database_url()
-            
-            await operations.store_story_history(
-                database_url,
-                story_data,
-                run_timestamp
-            )
-            
+
+            # TODO: Implement store_story_history in database
+            # For now, skip storing history
+            logger.info(f"Would store {len(story_data)} stories to history (not implemented)")
+
         except Exception as e:
-            logger.error(f"Failed to store story history: {e}")
-    
+            logger.warning(f"Story history storage not implemented: {e}")
+
     def _empty_brief(
-        self, 
-        timestamp: datetime, 
-        reason: str, 
+        self,
+        timestamp: datetime,
+        reason: str,
         error: str = None
     ) -> Dict[str, Any]:
         """Generate empty brief with reason."""
@@ -393,12 +417,12 @@ class ZeitgeistAgentV2:
             "reason": reason,
             "error": error
         }
-    
+
     async def get_platform_analysis(self, platform: str) -> Dict[str, Any]:
         """Get analysis for a specific platform."""
         with LogContext(operation="platform_analysis", platform=platform):
             logger.info(f"🎯 Analyzing {platform} content")
-            
+
             try:
                 posts = await self.supabase.operations.get_platform_posts(
                     self.supabase.database_url,
@@ -406,21 +430,21 @@ class ZeitgeistAgentV2:
                     hours=self.recent_window_hr,
                     limit=500
                 )
-                
+
                 if not posts:
                     return {"platform": platform, "stories": [], "total_engagement": 0}
-                
+
                 # Get previous scores for momentum
                 previous_scores = await self._get_previous_scores()
-                
+
                 # Cluster platform-specific content
                 story_clusters = await self.story_clustering.cluster_stories(
                     posts, previous_scores
                 )
-                
+
                 # Calculate platform metrics
                 total_engagement = sum(story.metrics.eng_total for story in story_clusters)
-                
+
                 # Format platform brief
                 platform_brief = {
                     "platform": platform,
@@ -439,42 +463,42 @@ class ZeitgeistAgentV2:
                     ],
                     "timestamp": datetime.utcnow().isoformat()
                 }
-                
+
                 return platform_brief
-                
+
             except Exception as e:
                 logger.error(f"Platform analysis failed for {platform}: {e}")
                 return {"platform": platform, "error": str(e)}
-    
+
     async def cleanup_resources(self) -> None:
         """Cleanup old embeddings and story history."""
         try:
             # Cleanup expired embeddings
             deleted_embeddings = await self.embedding_cache.cleanup_expired_embeddings()
-            
+
             # Cleanup old story history (30 days retention)
             # This would call a database function if available
             logger.info(f"Cleaned up {deleted_embeddings} expired embeddings")
-            
+
         except Exception as e:
             logger.error(f"Resource cleanup failed: {e}")
 
 
-async def main() -> None:
+async def main(hours: Optional[int] = None) -> None:
     """Run the zeitgeist analysis pipeline."""
-    agent = ZeitgeistAgentV2()
-    
+    agent = ZeitgeistAgentV2(hours=hours)
+
     try:
         # Run full analysis
         brief = await agent.run_analysis()
-        
+
         # Save to file for external consumption
         import json
         with open("/tmp/zeitgeist_brief.json", "w") as f:
             json.dump(brief, f, indent=2)
-        
+
         logger.info("📄 Brief saved to /tmp/zeitgeist_brief.json")
-        
+
         # Print summary
         if brief["total_stories"] > 0:
             print(f"\n🎬 ZEITGEIST BRIEF - {brief['total_stories']} stories")
@@ -483,14 +507,19 @@ async def main() -> None:
                 print(f"     {story['engagement']:,} engagement • {story['momentum']}")
         else:
             print(f"\n📭 No stories generated: {brief.get('reason', 'unknown')}")
-            
+
     except Exception as e:
         logger.error(f"Main pipeline failed: {e}")
-    
+
     finally:
         # Cleanup resources
         await agent.cleanup_resources()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="Run Zeitgeist Analysis")
+    parser.add_argument("--hours", type=int, default=RECENT_WINDOW_HR,
+                        help=f"Hours to look back (default: {RECENT_WINDOW_HR})")
+    args = parser.parse_args()
+
+    asyncio.run(main(args.hours))

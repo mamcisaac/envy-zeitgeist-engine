@@ -68,21 +68,21 @@ class TwitterFreeScraper:
         if not tag or not isinstance(tag, str):
             logger.warning("Invalid tag input provided")
             return
-            
+
         # Remove dangerous characters and validate tag format
         import re
         clean_tag = tag.strip("#").strip()
-        
+
         # Only allow alphanumeric, underscore, and common hashtag characters
         if not re.match(r'^[a-zA-Z0-9_\s\-]+$', clean_tag):
             logger.warning(f"Tag contains invalid characters: {tag}")
             return
-            
+
         # Limit tag length to prevent buffer overflow
         if len(clean_tag) > 100:
             logger.warning(f"Tag too long: {tag}")
             return
-            
+
         # Validate since_hours parameter
         if not isinstance(since_hours, int) or since_hours < 1 or since_hours > 168:  # Max 1 week
             since_hours = 24
@@ -91,11 +91,11 @@ class TwitterFreeScraper:
             with tempfile.NamedTemporaryFile(mode='w+', delete=False) as f:
                 # SECURITY: Use subprocess safely with explicit arguments (no shell injection)
                 cmd = [
-                    "snscrape", 
-                    "--jsonl", 
-                    "--max-results", 
+                    "snscrape",
+                    "--jsonl",
+                    "--max-results",
                     "50",
-                    f"twitter-hashtag", 
+                    "twitter-hashtag",
                     f"{clean_tag} since:{since}"
                 ]
 

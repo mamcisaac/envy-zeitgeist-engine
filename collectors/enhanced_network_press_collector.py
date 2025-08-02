@@ -28,10 +28,10 @@ class EnhancedNetworkPressCollector(CollectorMixin):
         """Initialize the network press collector with configuration."""
         # Competitor's specific NewsAPI sources
         self.newsapi_sources = [
-            "entertainment-weekly", "people", "us-weekly", "e-news", 
+            "entertainment-weekly", "people", "us-weekly", "e-news",
             "variety", "deadline", "hollywood-reporter"
         ]
-        
+
         # Network press RSS feeds and direct sources
         self.press_sources: Dict[str, Dict[str, Any]] = {
             "NBC": {
@@ -99,24 +99,24 @@ class EnhancedNetworkPressCollector(CollectorMixin):
             # Reality TV Shows (competitor's exact terms)
             "reality tv", "reality television", "bachelor", "bachelorette",
             "love island", "vanderpump rules", "big brother", "survivor",
-            "love is blind", "too hot to handle", "the circle", 
+            "love is blind", "too hot to handle", "the circle",
             "temptation island", "the traitors",
-            
-            # Our existing show coverage  
+
+            # Our existing show coverage
             "real housewives", "the challenge", "90 day fiance",
             "below deck", "jersey shore", "love after lockup",
-            "perfect match", "selling sunset", "the ultimatum", 
+            "perfect match", "selling sunset", "the ultimatum",
             "married at first sight",
 
             # Celebrity & Pop Culture (competitor's terms)
             "celebrity news", "celebrity gossip", "celebrity scandal",
-            "red carpet", "met gala", "awards show", "oscars", 
+            "red carpet", "met gala", "awards show", "oscars",
             "grammys", "emmys",
-            
+
             # Entertainment (competitor's terms)
             "box office", "movie premiere", "netflix", "streaming",
             "album release", "music video", "concert tour",
-            
+
             # Trending Topics (competitor's terms)
             "viral", "trending", "influencer", "tiktok", "social media",
 

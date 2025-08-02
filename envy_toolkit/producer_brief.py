@@ -6,13 +6,10 @@ and platform-specific insights. Supports multiple output formats including JSON,
 Slack, email, and dashboard formats.
 """
 
-import json
-from datetime import datetime
-from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
-
-from loguru import logger
+from typing import Any, Dict, List, Optional
 
 from .story_clustering import StoryCluster
 
@@ -58,10 +55,10 @@ class ProducerBriefGenerator:
     - Multiple output formats (JSON, Slack, email, etc.)
     - Engagement metrics and "why it matters" explanations
     """
-    
+
     def __init__(self):
         self.known_entities = self._load_known_entities()
-    
+
     def generate_brief(
         self,
         stories: List[StoryCluster],
@@ -85,12 +82,12 @@ class ProducerBriefGenerator:
         """
         if run_timestamp is None:
             run_timestamp = datetime.utcnow()
-        
+
         base_brief = self._generate_base_brief(stories, run_timestamp, momentum_trends)
-        
+
         if include_alerts:
             base_brief["editorial_alerts"] = self._generate_editorial_alerts(stories)
-        
+
         # Format according to requested type
         if format_type == BriefFormat.SLACK:
             return self._format_for_slack(base_brief)
@@ -102,7 +99,7 @@ class ProducerBriefGenerator:
             return self._format_for_markdown(base_brief)
         else:
             return base_brief  # JSON format
-    
+
     def _generate_base_brief(
         self,
         stories: List[StoryCluster],
@@ -128,16 +125,16 @@ class ProducerBriefGenerator:
                 "top_show": ""
             }
         }
-        
+
         # Process each story
         total_engagement = 0
         platform_counts = {}
         show_counts = {}
-        
+
         for rank, story in enumerate(stories, 1):
             # Determine primary platform
             primary_platform = self._get_primary_platform(story)
-            
+
             # Format story entry
             story_entry = {
                 "rank": rank,
@@ -165,14 +162,14 @@ class ProducerBriefGenerator:
                 "actionable_summary": self._generate_why_it_matters(story),
                 "producer_notes": self._generate_producer_notes(story)
             }
-            
+
             brief["stories"].append(story_entry)
-            
+
             # Update aggregates
             total_engagement += story.metrics.eng_total
             platform_counts[primary_platform] = platform_counts.get(primary_platform, 0) + 1
             show_counts[story.show_context] = show_counts.get(story.show_context, 0) + 1
-        
+
         # Complete aggregates
         brief["platform_breakdown"] = platform_counts
         brief["show_breakdown"] = show_counts
@@ -186,24 +183,24 @@ class ProducerBriefGenerator:
         brief["engagement_summary"]["top_show"] = (
             max(show_counts.items(), key=lambda x: x[1])[0] if show_counts else ""
         )
-        
+
         # Add momentum insights if available
         if momentum_trends:
             brief["momentum_insights"] = self._process_momentum_trends(momentum_trends)
-        
+
         return brief
-    
+
     def _generate_editorial_alerts(self, stories: List[StoryCluster]) -> List[Dict[str, Any]]:
         """Generate editorial alerts for unknown entities and breaking stories."""
         alerts = []
-        
+
         for story in stories:
             # High engagement threshold for alerts
             if story.metrics.eng_total > 2000:
                 unknown_terms = self._detect_unknown_entities(
                     story.representative_post.get("title", "")
                 )
-                
+
                 if unknown_terms:
                     alert = {
                         "type": "unknown_entity",
@@ -217,7 +214,7 @@ class ProducerBriefGenerator:
                         "urgency_score": self._calculate_urgency_score(story)
                     }
                     alerts.append(alert)
-            
+
             # Cross-platform story alert
             if len(story.platform_breakdown) >= 3:
                 alerts.append({
@@ -229,9 +226,9 @@ class ProducerBriefGenerator:
                     "platform_count": len(story.platform_breakdown),
                     "recommendation": "Story gaining traction across multiple platforms - consider immediate coverage"
                 })
-        
+
         return sorted(alerts, key=lambda x: x.get("urgency_score", 0), reverse=True)
-    
+
     def _format_for_slack(self, brief: Dict[str, Any]) -> Dict[str, Any]:
         """Format brief for Slack channel posting."""
         blocks = [
@@ -254,12 +251,12 @@ class ProducerBriefGenerator:
                 ]
             }
         ]
-        
+
         # Add top stories
         for story in brief["stories"][:5]:  # Top 5 for Slack
             momentum_emoji = "🔥" if "building" in story["momentum"]["direction"] else \
                            "❄️" if "cooling" in story["momentum"]["direction"] else "➡️"
-            
+
             blocks.append({
                 "type": "section",
                 "text": {
@@ -272,7 +269,7 @@ class ProducerBriefGenerator:
                            f"_{story['actionable_summary']}_"
                 }
             })
-        
+
         # Add editorial alerts if any
         if brief.get("editorial_alerts"):
             blocks.append({"type": "divider"})
@@ -283,7 +280,7 @@ class ProducerBriefGenerator:
                     "text": f"🚨 *{len(brief['editorial_alerts'])} Editorial Alerts*"
                 }
             })
-            
+
             for alert in brief["editorial_alerts"][:3]:  # Top 3 alerts
                 priority_emoji = "🔴" if alert["priority"] == "high" else "🟡"
                 blocks.append({
@@ -295,16 +292,16 @@ class ProducerBriefGenerator:
                                f"_{alert['recommendation']}_"
                     }
                 })
-        
+
         return {
             "text": f"Zeitgeist Brief - {brief['metadata']['total_stories']} stories",
             "blocks": blocks
         }
-    
+
     def _format_for_email(self, brief: Dict[str, Any]) -> Dict[str, Any]:
         """Format brief for email distribution."""
         subject = f"Zeitgeist Brief: {brief['metadata']['total_stories']} Breaking Stories"
-        
+
         html_body = f"""
         <h2>🎬 Zeitgeist Brief</h2>
         <p><strong>{brief['metadata']['total_stories']} stories</strong> • 
@@ -313,7 +310,7 @@ class ProducerBriefGenerator:
         
         <h3>Top Stories</h3>
         """
-        
+
         for story in brief["stories"]:
             html_body += f"""
             <div style="border-left: 3px solid #007cba; padding-left: 15px; margin: 15px 0;">
@@ -326,7 +323,7 @@ class ProducerBriefGenerator:
                 <p><strong>Producer Notes:</strong> {story['producer_notes']}</p>
             </div>
             """
-        
+
         # Add alerts
         if brief.get("editorial_alerts"):
             html_body += "<h3>🚨 Editorial Alerts</h3>"
@@ -338,13 +335,13 @@ class ProducerBriefGenerator:
                     <em>{alert['recommendation']}</em>
                 </div>
                 """
-        
+
         return {
             "subject": subject,
             "html_body": html_body,
             "text_body": self._generate_text_summary(brief)
         }
-    
+
     def _format_for_dashboard(self, brief: Dict[str, Any]) -> Dict[str, Any]:
         """Format brief for dashboard/API consumption."""
         return {
@@ -360,7 +357,7 @@ class ProducerBriefGenerator:
                 "average_story_age_minutes": sum(s["cluster_info"]["age_minutes"] for s in brief["stories"]) / len(brief["stories"]) if brief["stories"] else 0
             }
         }
-    
+
     def _format_for_markdown(self, brief: Dict[str, Any]) -> Dict[str, Any]:
         """Format brief as markdown document."""
         md_content = f"""# 🎬 Zeitgeist Brief
@@ -370,7 +367,7 @@ class ProducerBriefGenerator:
 ## Top Stories
 
 """
-        
+
         for story in brief["stories"]:
             md_content += f"""### {story['rank']}. {story['headline']}
 
@@ -383,7 +380,7 @@ class ProducerBriefGenerator:
 ---
 
 """
-        
+
         # Add alerts section
         if brief.get("editorial_alerts"):
             md_content += "\n## 🚨 Editorial Alerts\n\n"
@@ -397,31 +394,31 @@ class ProducerBriefGenerator:
 ---
 
 """
-        
+
         return {
             "content": md_content,
             "filename": f"zeitgeist_brief_{brief['metadata']['timestamp'][:10]}.md"
         }
-    
+
     # Helper methods
-    
+
     def _get_platform_list(self, stories: List[StoryCluster]) -> List[str]:
         """Get list of all platforms involved in stories."""
         platforms = set()
         for story in stories:
             platforms.update(story.platform_breakdown.keys())
         return sorted(platforms)
-    
+
     def _get_primary_platform(self, story: StoryCluster) -> str:
         """Get primary platform for a story."""
         if not story.platform_breakdown:
             return "unknown"
         return max(story.platform_breakdown.items(), key=lambda x: x[1])[0]
-    
+
     def _clean_headline(self, headline: str) -> str:
         """Clean and truncate headline for display."""
         return headline.strip()[:100] if headline else "Untitled Story"
-    
+
     def _get_momentum_arrow(self, direction: str) -> str:
         """Get arrow emoji for momentum direction."""
         if "building" in direction.lower():
@@ -430,7 +427,7 @@ class ProducerBriefGenerator:
             return "↘️"
         else:
             return "➡️"
-    
+
     def _format_top_posts(self, posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Format top posts for brief display."""
         sorted_posts = sorted(posts, key=lambda p: p.get("raw_eng", 0), reverse=True)
@@ -443,55 +440,55 @@ class ProducerBriefGenerator:
             }
             for post in sorted_posts[:3]
         ]
-    
+
     def _generate_why_it_matters(self, story: StoryCluster) -> str:
         """Generate 'why it matters' summary for producers."""
         platform_count = len(story.platform_breakdown)
-        
+
         summary = f"{story.metrics.cluster_size} posts generating {story.metrics.eng_total:,} engagements"
-        
+
         if platform_count > 1:
             summary += f" across {platform_count} platforms"
-        
+
         if story.metrics.velocity > 1:
             summary += f", growing at {story.metrics.velocity:.1f} engagements/min"
-        
+
         if "building" in story.metrics.momentum_direction:
             summary += " with building momentum"
         elif "cooling" in story.metrics.momentum_direction:
             summary += " but losing steam"
-        
+
         return summary
-    
+
     def _generate_producer_notes(self, story: StoryCluster) -> str:
         """Generate actionable producer notes."""
         notes = []
-        
+
         if story.metrics.age_min < 60:
             notes.append("Fresh story - move quickly")
         elif story.metrics.age_min > 180:
             notes.append("Developing story - monitor for updates")
-        
+
         if len(story.platform_breakdown) >= 3:
             notes.append("Cross-platform traction - high impact potential")
-        
+
         if story.metrics.velocity > 2:
             notes.append("High velocity - consider immediate coverage")
-        
+
         if "building" in story.metrics.momentum_direction:
             notes.append("Building momentum - timing is critical")
-        
+
         return " • ".join(notes) if notes else "Standard coverage approach"
-    
+
     def _detect_unknown_entities(self, text: str) -> List[str]:
         """Detect unknown entities in text."""
         if not text:
             return []
-        
+
         words = set(text.lower().split())
         unknown_words = words - self.known_entities
         return [w for w in unknown_words if len(w) > 3 and w.isalpha()][:3]
-    
+
     def _generate_alert_recommendation(self, story: StoryCluster) -> str:
         """Generate recommendation for editorial alert."""
         if story.metrics.velocity > 5:
@@ -500,24 +497,24 @@ class ProducerBriefGenerator:
             return "Cross-platform story with unknown terms - editorial review advised"
         else:
             return "Monitor for development - potential breaking story"
-    
+
     def _calculate_urgency_score(self, story: StoryCluster) -> float:
         """Calculate urgency score for editorial alerts."""
         score = 0.0
         score += story.metrics.eng_total / 1000  # Engagement factor
         score += story.metrics.velocity * 5      # Velocity factor
         score += len(story.platform_breakdown) * 2  # Platform diversity factor
-        
+
         if story.metrics.age_min < 30:
             score += 10  # Freshness bonus
-        
+
         return score
-    
+
     def _process_momentum_trends(self, trends: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Process momentum trend data for insights."""
         building = [t for t in trends if t["momentum_direction"] == "building ↑"]
         cooling = [t for t in trends if t["momentum_direction"] == "cooling ↓"]
-        
+
         return {
             "building_count": len(building),
             "cooling_count": len(cooling),
@@ -525,18 +522,18 @@ class ProducerBriefGenerator:
             "top_cooling": cooling[:3],
             "overall_momentum": "positive" if len(building) > len(cooling) else "negative"
         }
-    
+
     def _generate_text_summary(self, brief: Dict[str, Any]) -> str:
         """Generate plain text summary of brief."""
         text = f"ZEITGEIST BRIEF - {brief['metadata']['total_stories']} STORIES\n\n"
-        
+
         for story in brief["stories"]:
             text += f"{story['rank']}. {story['headline']}\n"
             text += f"   {story['engagement_metrics']['total']:,} engagement • {story['momentum']['direction']}\n"
             text += f"   {story['actionable_summary']}\n\n"
-        
+
         return text
-    
+
     def _load_known_entities(self) -> set:
         """Load known entities for unknown detection."""
         return {
@@ -545,7 +542,7 @@ class ProducerBriefGenerator:
             "big", "brother", "survivor", "challenge", "blind", "hot", "handle", "single", "inferno",
             "physical", "circle", "teen", "mom", "fiance", "below", "deck", "southern", "charm",
             "summer", "house", "married", "first", "sight",
-            
+
             # Common terms
             "drama", "breakup", "couple", "finale", "reunion", "episode", "season", "cast",
             "elimination", "rose", "ceremony", "tribal", "council", "eviction", "dating",

@@ -30,7 +30,7 @@ class EntertainmentNewsCollector(CollectorMixin):
         """Initialize the entertainment news collector with configuration."""
         self.serpapi_key: Optional[str] = os.getenv("SERPAPI_API_KEY")
         self.openai_key: Optional[str] = os.getenv("OPENAI_API_KEY")
-        
+
         # Competitor's podcast keywords (18 terms)
         self.podcast_keywords: List[str] = [
             "reality tv", "reality television", "bachelor", "bachelorette",

@@ -98,17 +98,8 @@ class EnhancedRedditCollector(CollectorMixin):
         try:
             sub = self.reddit.subreddit(subreddit_name)
 
-            # Strategy 1: Recent posts (breaking news)
-            recent_posts = await self._get_recent_posts(sub)
-            logger.debug(f"Found {len(recent_posts)} recent posts in r/{subreddit_name}")
-
-            # Strategy 2: Comment-heavy posts (ongoing stories)
-            comment_heavy_posts = await self._get_comment_heavy_posts(sub)
-            logger.debug(f"Found {len(comment_heavy_posts)} comment-heavy posts in r/{subreddit_name}")
-
-            # Combine and deduplicate
-            all_posts = recent_posts + comment_heavy_posts
-            unique_posts = self._deduplicate_posts(all_posts)
+            # Three-signal collection strategy for comprehensive coverage
+            unique_posts = await self._collect_three_signals(sub, subreddit_name)
 
             logger.info(f"Processing {len(unique_posts)} unique posts from r/{subreddit_name}")
 
@@ -123,56 +114,174 @@ class EnhancedRedditCollector(CollectorMixin):
 
         return mentions
 
-    async def _get_recent_posts(self, subreddit: Any) -> List[Any]:
-        """Get recent posts (≤24h) for breaking news detection.
-
+    async def _collect_three_signals(self, subreddit: Any, subreddit_name: str) -> List[Any]:
+        """Collect posts using three-signal strategy for comprehensive coverage.
+        
+        Combines:
+        - Rising posts (Reddit's 1-hour momentum detector)
+        - Top posts from last 24h (proven engagement)
+        - Fresh posts with micro-filter (earliest breaks)
+        
         Args:
             subreddit: PRAW subreddit object
+            subreddit_name: Name for logging and tier determination
+            
+        Returns:
+            List of up to 100 unique posts
+        """
+        TARGET_POSTS = 100
+        unique_posts = {}
+        
+        # Determine subreddit tier for micro-filter thresholds
+        subreddit_config = next((config for name, config in 
+                               [("LoveIslandUSA", {"members": 500000, "tier": "large"}),
+                                ("thebachelor", {"members": 300000, "tier": "large"}),
+                                ("BigBrother", {"members": 250000, "tier": "medium"}),
+                                ("BravoRealHousewives", {"members": 200000, "tier": "medium"}),
+                                ("realhousewives", {"members": 150000, "tier": "medium"}),
+                                ("MtvChallenge", {"members": 100000, "tier": "small"}),
+                                ("90DayFiance", {"members": 90000, "tier": "small"}),
+                                ("vanderpumprules", {"members": 120000, "tier": "medium"}),
+                                ("BelowDeck", {"members": 80000, "tier": "small"})]
+                               if name == subreddit_name), {"tier": "small"})
+        
+        tier = subreddit_config["tier"]
+        
+        # Collection strategy: rising → top(day) → new (with micro-filter)
+        collection_methods = [
+            ("rising", 50, self._get_rising_posts),
+            ("top_day", 30, self._get_top_day_posts), 
+            ("new", 40, lambda sub: self._get_fresh_posts(sub, tier))
+        ]
+        
+        for method_name, limit, method_func in collection_methods:
+            try:
+                posts = await method_func(subreddit)
+                added_count = 0
+                
+                for post in posts[:limit]:  # Respect limit even if method returns more
+                    if post.id not in unique_posts:
+                        # Add source listing metadata for story classification
+                        post._source_listing = method_name
+                        unique_posts[post.id] = post
+                        added_count += 1
+                        
+                        if len(unique_posts) >= TARGET_POSTS:
+                            break
+                
+                logger.debug(f"Added {added_count} unique posts from {method_name} in r/{subreddit_name}")
+                
+                if len(unique_posts) >= TARGET_POSTS:
+                    break
+                    
+            except Exception as e:
+                logger.error(f"Error getting {method_name} posts from r/{subreddit_name}: {e}")
+                continue
+        
+        logger.info(f"Three-signal collection: {len(unique_posts)} unique posts from r/{subreddit_name}")
+        return list(unique_posts.values())
 
+    async def _get_rising_posts(self, subreddit: Any) -> List[Any]:
+        """Get rising posts - Reddit's 1-hour momentum detector.
+        
+        Args:
+            subreddit: PRAW subreddit object
+            
         Returns:
             List of PRAW submission objects
         """
         try:
-            # Get recent hot posts
-            recent_posts = list(subreddit.hot(limit=50))
-
-            # Filter to last 24 hours
-            now = datetime.utcnow()
-            filtered_posts = []
-
-            for post in recent_posts:
-                post_age_hours = (now.timestamp() - post.created_utc) / 3600
-                if post_age_hours <= 24:
-                    filtered_posts.append(post)
-
-            return filtered_posts
-
+            return list(subreddit.rising(limit=50))
         except Exception as e:
-            logger.error(f"Error getting recent posts: {e}")
+            logger.error(f"Error getting rising posts: {e}")
             return []
 
-    async def _get_comment_heavy_posts(self, subreddit: Any) -> List[Any]:
-        """Get top 100 posts by comment count for ongoing stories.
-
+    async def _get_top_day_posts(self, subreddit: Any) -> List[Any]:
+        """Get top posts from last 24h - proven engagement winners.
+        
         Args:
             subreddit: PRAW subreddit object
-
+            
         Returns:
-            List of PRAW submission objects sorted by comment count
+            List of PRAW submission objects
         """
         try:
-            # Get hot posts and sort by comment count
-            hot_posts = list(subreddit.hot(limit=100))
-
-            # Sort by comment count descending
-            comment_sorted = sorted(hot_posts, key=lambda p: p.num_comments, reverse=True)
-
-            # Take top 50 by comments (limit to avoid overwhelming the system)
-            return comment_sorted[:50]
-
+            return list(subreddit.top(time_filter="day", limit=30))
         except Exception as e:
-            logger.error(f"Error getting comment-heavy posts: {e}")
+            logger.error(f"Error getting top day posts: {e}")
             return []
+
+    async def _get_fresh_posts(self, subreddit: Any, tier: str) -> List[Any]:
+        """Get newest posts with micro-filter for early break detection.
+        
+        Args:
+            subreddit: PRAW subreddit object
+            tier: Subreddit tier (large/medium/small) for filter thresholds
+            
+        Returns:
+            List of filtered PRAW submission objects
+        """
+        try:
+            new_posts = list(subreddit.new(limit=40))
+            filtered_posts = []
+            
+            for post in new_posts:
+                if self._pass_new_filter(post, tier):
+                    filtered_posts.append(post)
+            
+            logger.debug(f"New posts filter: {len(filtered_posts)}/{len(new_posts)} passed (tier: {tier})")
+            return filtered_posts
+            
+        except Exception as e:
+            logger.error(f"Error getting fresh posts: {e}")
+            return []
+
+    def _pass_new_filter(self, post: Any, tier: str) -> bool:
+        """Micro-filter for brand-new posts to prevent noise.
+        
+        Args:
+            post: PRAW submission object
+            tier: Subreddit tier for threshold adjustment
+            
+        Returns:
+            True if post meets minimum signal threshold
+        """
+        # Filter thresholds by subreddit size
+        thresholds = {
+            "large": 15,   # Big subs generate filler fast
+            "medium": 10,  # Balance recall/noise
+            "small": 5     # Sparse traffic needs looser gate
+        }
+        
+        min_threshold = thresholds.get(tier, 10)
+        
+        # Calculate raw engagement score
+        raw_eng = (post.score + 
+                  (post.num_comments * 2) + 
+                  (getattr(post, 'total_awards_received', 0) * 5))
+        
+        # Basic signal test
+        if raw_eng >= min_threshold:
+            return True
+        
+        # Viral keywords with minimal engagement
+        viral_keywords = [
+            "breaking", "omg", "leaked", "drama", "tea", "holy", "can't believe",
+            "dies", "split", "divorce", "dumped", "eliminated", "removed",
+            "scandal", "exposed", "caught", "fight", "beef", "feud"
+        ]
+        
+        title_lower = post.title.lower()
+        has_viral_keyword = any(kw in title_lower for kw in viral_keywords)
+        
+        if has_viral_keyword and post.num_comments >= 3:
+            return True
+        
+        # Check for removed/deleted posts
+        if getattr(post, 'removed_by_category', None) or getattr(post, 'over_18', False):
+            return False
+            
+        return False
 
     def _deduplicate_posts(self, posts: List[Any]) -> List[Any]:
         """Remove duplicate posts based on post ID.

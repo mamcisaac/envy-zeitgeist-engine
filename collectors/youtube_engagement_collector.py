@@ -47,10 +47,10 @@ class YouTubeEngagementCollector(CollectorMixin):
             "Perfect Match Netflix",
             "Selling Sunset 2025",
             "Love is Blind UK",
-            
+
             # Competitor's general terms (broader coverage)
             "The Bachelor",
-            "Vanderpump Rules", 
+            "Vanderpump Rules",
             "Love Is Blind",
             "Love Island USA",
             "Too Hot to Handle",
