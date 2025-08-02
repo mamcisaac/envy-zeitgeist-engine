@@ -138,8 +138,16 @@ class QueryExecutor:
                     # Use executemany for bulk operations
                     result = await conn.executemany(query, batch)
                     # Extract number from result string (e.g., "INSERT 0 100")
-                    affected = int(result.split()[-1])
-                    total_affected += affected
+                    if result:
+                        try:
+                            affected = int(result.split()[-1])
+                            total_affected += affected
+                        except (ValueError, IndexError):
+                            # If we can't parse, assume batch was successful
+                            total_affected += len(batch)
+                    else:
+                        # No result string, assume batch was successful
+                        total_affected += len(batch)
                 except Exception as e:
                     logger.error(f"Batch execution failed at index {i}: {e}")
                     raise DatabaseError(

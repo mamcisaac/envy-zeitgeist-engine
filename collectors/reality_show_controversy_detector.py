@@ -204,7 +204,7 @@ class RealityShowControversyDetector(CollectorMixin):
                         )
 
                         # Calculate platform score (no engagement data for RSS)
-                        platform_score = 10.0 / age_hours
+                        platform_score = min(10.0 / age_hours, 1.0)  # Cap at 1.0
 
                         # Add controversy keywords as entities
                         entities.extend(controversy_matches[:3])
@@ -311,7 +311,7 @@ class RealityShowControversyDetector(CollectorMixin):
 
                             # Calculate platform score (approximate for search results)
                             age_hours = 24.0  # Assume 24 hours old
-                            platform_score = 5.0 / age_hours
+                            platform_score = min(5.0 / age_hours, 1.0)  # Cap at 1.0
 
                             # Add controversy keywords as entities
                             entities.extend(controversy_matches[:3])

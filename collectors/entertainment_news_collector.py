@@ -30,6 +30,15 @@ class EntertainmentNewsCollector(CollectorMixin):
         """Initialize the entertainment news collector with configuration."""
         self.serpapi_key: Optional[str] = os.getenv("SERPAPI_API_KEY")
         self.openai_key: Optional[str] = os.getenv("OPENAI_API_KEY")
+        
+        # Competitor's podcast keywords (18 terms)
+        self.podcast_keywords: List[str] = [
+            "reality tv", "reality television", "bachelor", "bachelorette",
+            "bachelor nation", "love island", "love island usa", "love island recap",
+            "vanderpump rules", "vanderpump", "pump rules", "love is blind",
+            "too hot to handle", "the circle", "survivor", "big brother",
+            "temptation island"
+        ]
 
         # Entertainment news sources - Enhanced with TMZ, Page Six, Deadline
         self.news_sources: Dict[str, Dict[str, Any]] = {
@@ -262,7 +271,7 @@ class EntertainmentNewsCollector(CollectorMixin):
                     )
 
                     # Simple engagement score (no likes/comments available for RSS)
-                    platform_score = 10.0 / age_hours
+                    platform_score = min(10.0 / age_hours, 1.0)  # Cap at 1.0
 
                     # Extract entities (celebrities/shows mentioned)
                     entities = self._extract_entities(title_summary)
@@ -433,7 +442,7 @@ class EntertainmentNewsCollector(CollectorMixin):
                 if any(keyword in combined_text for keyword in self.reality_keywords):
                     # Calculate platform score
                     age_hours = 24.0  # Assume 1 day old for search results
-                    platform_score = 3.0 / age_hours
+                    platform_score = min(3.0 / age_hours, 1.0)  # Cap at 1.0
 
                     # Extract entities
                     entities = self._extract_entities(combined_text)

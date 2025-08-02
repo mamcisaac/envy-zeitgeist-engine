@@ -241,6 +241,25 @@ class EnhancedSupabaseClient:
         database_url = await self._get_database_url()
         return await self.monitor.get_maintenance_recommendations(database_url)
 
+    # Warm storage operations for tiered content management
+    async def bulk_insert_warm_mentions(self, mentions: List[Dict[str, Any]]) -> None:
+        """Bulk insert mentions into warm storage with TTL."""
+        operations = await self._ensure_operations()
+        database_url = await self._get_database_url()
+        await operations.bulk_insert_warm_mentions(database_url, mentions)
+
+    async def get_warm_mentions_since(self, cutoff_time: datetime, limit: int = 1000) -> List[Dict[str, Any]]:
+        """Get warm mentions since a specific time."""
+        operations = await self._ensure_operations()
+        database_url = await self._get_database_url()
+        return await operations.get_warm_mentions_since(database_url, cutoff_time, limit)
+
+    async def delete_expired_warm_mentions(self, cutoff_time: datetime) -> int:
+        """Delete expired warm mentions older than cutoff time."""
+        operations = await self._ensure_operations()
+        database_url = await self._get_database_url()
+        return await operations.delete_expired_warm_mentions(database_url, cutoff_time)
+
     async def close(self) -> None:
         """Close the connection pool and clean up resources."""
         await self.pool_manager.close()

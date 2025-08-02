@@ -2,6 +2,7 @@
 High-level Supabase operations for mentions, topics, and other domain entities.
 """
 
+import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -30,19 +31,34 @@ class SupabaseOperations:
         """Insert a single mention into the database."""
         query = """
             INSERT INTO raw_mentions (
-                entity_name, source, content, metadata,
-                timestamp, relevance_score, embedding
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                id, source, url, title, body,
+                timestamp, platform_score, embedding,
+                entities, extras
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         """
 
+        # Convert embedding list to string format for pgvector (SECURE)
+        embedding = mention.get("embedding")
+        if embedding and isinstance(embedding, list):
+            # SECURITY: Safely escape vector embeddings to prevent injection
+            from ..security_patches import database_security
+            embedding_str = database_security.escape_vector_embedding(embedding)
+            if embedding_str == "NULL":
+                embedding_str = None
+        else:
+            embedding_str = None
+            
         params = [
-            mention.get("entity_name"),
+            mention.get("id"),
             mention.get("source"),
-            mention.get("content"),
-            mention.get("metadata", {}),
+            mention.get("url"),
+            mention.get("title"),
+            mention.get("body"),
             mention.get("timestamp", datetime.utcnow()),
-            mention.get("relevance_score", 0.0),
-            mention.get("embedding")
+            mention.get("platform_score", 0.0),
+            embedding_str,
+            mention.get("entities", []),
+            json.dumps(mention.get("extras", {}))  # Convert dict to JSON string
         ]
 
         try:
@@ -56,7 +72,7 @@ class SupabaseOperations:
                     use_transaction=True
                 )
         except (RetryExhaustedError, CircuitBreakerOpenError) as e:
-            with LogContext(operation="insert_mention", entity=mention.get("entity_name")):
+            with LogContext(operation="insert_mention", mention_id=mention.get("id")):
                 get_error_handler().handle_error(
                     error=DatabaseError(
                         "Failed to insert mention after retries",
@@ -76,22 +92,38 @@ class SupabaseOperations:
 
         query = """
             INSERT INTO raw_mentions (
-                entity_name, source, content, metadata,
-                timestamp, relevance_score, embedding
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                id, source, url, title, body,
+                timestamp, platform_score, embedding,
+                entities, extras
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (id) DO NOTHING
         """
 
         # Convert mentions to parameter lists
         params_list = []
         for mention in mentions:
+            # Convert embedding list to string format for pgvector (SECURE)
+            embedding = mention.get("embedding")
+            if embedding and isinstance(embedding, list):
+                # SECURITY: Safely escape vector embeddings to prevent injection
+                from ..security_patches import database_security
+                embedding_str = database_security.escape_vector_embedding(embedding)
+                if embedding_str == "NULL":
+                    embedding_str = None
+            else:
+                embedding_str = None
+                
             params_list.append([
-                mention.get("entity_name"),
+                mention.get("id"),
                 mention.get("source"),
-                mention.get("content"),
-                mention.get("metadata", {}),
+                mention.get("url"),
+                mention.get("title"),
+                mention.get("body"),
                 mention.get("timestamp", datetime.utcnow()),
-                mention.get("relevance_score", 0.0),
-                mention.get("embedding")
+                mention.get("platform_score", 0.0),
+                embedding_str,
+                mention.get("entities", []),
+                json.dumps(mention.get("extras", {}))  # Convert dict to JSON string
             ])
 
         try:
@@ -275,3 +307,123 @@ class SupabaseOperations:
         except (RetryExhaustedError, CircuitBreakerOpenError) as e:
             logger.error(f"Failed to get entity mentions: {e}")
             return []
+
+    @collect_metrics(operation_name="bulk_insert_warm_mentions")
+    async def bulk_insert_warm_mentions(self, database_url: str, mentions: List[Dict[str, Any]]) -> None:
+        """Bulk insert mentions into warm storage with TTL."""
+        if not mentions:
+            return
+
+        query = """
+            INSERT INTO warm_mentions (
+                id, source, url, title, body,
+                timestamp, platform_score, embedding,
+                entities, extras, storage_tier, ttl_expires
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ON CONFLICT (id) DO NOTHING
+        """
+
+        # Convert mentions to parameter lists
+        params_list = []
+        for mention in mentions:
+            # Convert embedding list to string format for pgvector (SECURE)
+            embedding = mention.get("embedding")
+            if embedding and isinstance(embedding, list):
+                # SECURITY: Safely escape vector embeddings to prevent injection
+                from ..security_patches import database_security
+                embedding_str = database_security.escape_vector_embedding(embedding)
+                if embedding_str == "NULL":
+                    embedding_str = None
+            else:
+                embedding_str = None
+                
+            params_list.append([
+                mention.get("id"),
+                mention.get("source"),
+                mention.get("url"),
+                mention.get("title"),
+                mention.get("body"),
+                mention.get("timestamp", datetime.utcnow()),
+                mention.get("platform_score", 0.0),
+                embedding_str,
+                mention.get("entities", []),
+                json.dumps(mention.get("extras", {})),
+                mention.get("storage_tier", "warm"),
+                mention.get("ttl_expires")
+            ])
+
+        try:
+            async with self.rate_limiter:
+                affected = await self.circuit_breaker.call(
+                    self.query_executor.execute_many,
+                    database_url,
+                    query,
+                    params_list,
+                    batch_size=50
+                )
+                logger.info(f"Successfully inserted {affected} warm mentions")
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
+            logger.error(f"Warm mentions bulk insert failed: {e}")
+            raise  # Re-raise for fallback handling
+
+    @collect_metrics(operation_name="get_warm_mentions_since")
+    async def get_warm_mentions_since(
+        self,
+        database_url: str,
+        cutoff_time: datetime,
+        limit: int = 1000
+    ) -> List[Dict[str, Any]]:
+        """Get warm mentions since a specific time."""
+        query = """
+            SELECT * FROM warm_mentions
+            WHERE timestamp >= $1
+            AND ttl_expires > NOW()
+            ORDER BY timestamp DESC
+            LIMIT $2
+        """
+        
+        params = [cutoff_time, limit]
+        
+        try:
+            async with self.rate_limiter:
+                records = await self.circuit_breaker.call(
+                    self.query_executor.execute_query,
+                    database_url,
+                    query,
+                    params,
+                    use_cache=True
+                )
+                return [dict(record) for record in records]
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
+            logger.error(f"Failed to get warm mentions: {e}")
+            return []
+
+    @collect_metrics(operation_name="delete_expired_warm_mentions")
+    async def delete_expired_warm_mentions(
+        self,
+        database_url: str,
+        cutoff_time: datetime
+    ) -> int:
+        """Delete expired warm mentions older than cutoff time."""
+        query = """
+            DELETE FROM warm_mentions
+            WHERE ttl_expires <= $1
+        """
+        
+        params = [cutoff_time]
+        
+        try:
+            async with self.rate_limiter:
+                result = await self.circuit_breaker.call(
+                    self.query_executor.execute_query,
+                    database_url,
+                    query,
+                    params,
+                    use_cache=False,
+                    use_transaction=True
+                )
+                # Return the number of affected rows
+                return len(result) if result else 0
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
+            logger.error(f"Failed to delete expired warm mentions: {e}")
+            return 0

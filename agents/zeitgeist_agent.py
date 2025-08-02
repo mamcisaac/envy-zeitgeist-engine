@@ -300,24 +300,28 @@ class ZeitgeistAgent:
 
         top_entities = sorted(entity_counts.items(), key=lambda x: x[1], reverse=True)[:5]
 
-        # Generate summary with LLM
-        prompt = f"""Analyze this trending topic in pop culture/entertainment:
+        # Generate summary with LLM - Enhanced for specific, actionable headlines
+        prompt = f"""Analyze this SPECIFIC trending entertainment story. Create headlines like "Love Island JaNa & Kenny Breakup Confirmed" or "124 — Janas Bestfriend Drama Explodes" - NOT generic ones like "Celebrity News Trending".
 
-Sample Headlines:
+Sample Headlines from Real Social Media:
 {chr(10).join(f'- {t}' for t in sample_titles)}
 
-Key Entities: {', '.join([e[0] for e in top_entities])}
-Sources: {', '.join(sources)}
-Total Engagement: {total_engagement:.0f}
-Trend Forecast: {forecast}
+Key People/Shows: {', '.join([e[0] for e in top_entities])}
+Platforms: {', '.join(sources)}
+Engagement: {total_engagement:.0f} total interactions
+Trend Timing: {forecast}
 
-Create:
-1. A catchy headline (max 100 chars)
-2. A 2-3 sentence TL;DR
-3. 2-3 potential guests to discuss this topic
-4. 3 engaging interview questions
+REQUIREMENTS - Create SPECIFIC, actionable content:
+1. Headline: Use EXACT names, show titles, specific drama (max 80 chars)
+   - Good: "Love Island USA JaNa Craig Friendship Drama Viral"  
+   - Bad: "Reality TV Relationship Drama Trending"
+2. TL;DR: Specific events, not generic descriptions (2-3 sentences)
+3. Guests: REAL people involved or expert commentators (2-3 names)
+4. Questions: Ask about SPECIFIC events, not general topics (3 questions)
 
-Format as JSON with keys: headline, tl_dr, guests, sample_questions"""
+Response as JSON: {{"headline": "...", "tl_dr": "...", "guests": [...], "sample_questions": [...]}}
+
+Focus on WHO, WHAT specifically happened, WHERE (which show/platform), and WHY it's viral RIGHT NOW."""
 
         response = await self.llm.generate(prompt, model="gpt-4o", max_tokens=500)
 

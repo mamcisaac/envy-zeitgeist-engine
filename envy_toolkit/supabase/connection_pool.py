@@ -45,14 +45,22 @@ class ConnectionPoolManager:
 
     async def get_database_url(self, supabase_url: str) -> str:
         """Extract direct database URL from Supabase URL."""
-        # Convert Supabase URL to direct PostgreSQL connection string
-        # Format: postgresql://postgres:[password]@[host]:5432/postgres
-
-        # Extract password from environment (should be SUPABASE_DB_PASSWORD)
+        # First check if we have a pooler URL in environment (IPv4)
+        pooler_url = os.getenv("SUPABASE_DB_URL_POOLER")
+        if pooler_url:
+            logger.info("Using IPv4 pooler connection from environment")
+            return pooler_url
+        
+        # Fallback to DATABASE_URL if set
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            logger.info("Using DATABASE_URL from environment")
+            return database_url
+        
+        # If no direct URL is provided, try to construct one (IPv6 - may fail)
         db_password = os.getenv("SUPABASE_DB_PASSWORD") or os.getenv("DATABASE_PASSWORD")
         if not db_password:
             logger.warning("Direct database password not found, connection pooling disabled")
-            # Return None to indicate connection pooling is not available
             return ""
 
         # Extract host from Supabase URL (format: https://[project-ref].supabase.co)
@@ -63,7 +71,8 @@ class ConnectionPoolManager:
 
         project_ref = match.group(1)
         db_host = f"db.{project_ref}.supabase.co"
-
+        
+        logger.warning(f"Constructing database URL with host {db_host} - this may use IPv6")
         return f"postgresql://postgres:{db_password}@{db_host}:5432/postgres"
 
     async def ensure_pool(self, database_url: str) -> asyncpg.Pool:

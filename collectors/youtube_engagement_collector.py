@@ -33,8 +33,9 @@ class YouTubeEngagementCollector(CollectorMixin):
         # Initialize YouTube API client
         self.youtube = build('youtube', 'v3', developerKey=self.youtube_api_key)
 
-        # Reality TV search terms
+        # Reality TV search terms (our original + competitor's)
         self.reality_search_terms: List[str] = [
+            # Our original terms (current/specific)
             "Love Island USA 2025",
             "Big Brother 27",
             "The Bachelorette Jenn Tran",
@@ -45,7 +46,17 @@ class YouTubeEngagementCollector(CollectorMixin):
             "Love After Lockup",
             "Perfect Match Netflix",
             "Selling Sunset 2025",
-            "Love is Blind UK"
+            "Love is Blind UK",
+            
+            # Competitor's general terms (broader coverage)
+            "The Bachelor",
+            "Vanderpump Rules", 
+            "Love Is Blind",
+            "Love Island USA",
+            "Too Hot to Handle",
+            "The Circle US",
+            "Survivor",
+            "Big Brother"
         ]
 
         # Popular reality TV channels to monitor
@@ -112,7 +123,7 @@ class YouTubeEngagementCollector(CollectorMixin):
                 type='video',
                 order='relevance',
                 publishedAfter=(datetime.utcnow() - timedelta(days=7)).isoformat() + 'Z',
-                maxResults=10
+                maxResults=50
             ).execute()
 
             video_ids = [item['id']['videoId'] for item in search_response['items']]
@@ -156,7 +167,7 @@ class YouTubeEngagementCollector(CollectorMixin):
                 type='video',
                 order='date',
                 publishedAfter=(datetime.utcnow() - timedelta(days=7)).isoformat() + 'Z',
-                maxResults=10
+                maxResults=50
             ).execute()
 
             video_ids = [item['id']['videoId'] for item in search_response['items']]
@@ -230,6 +241,10 @@ class YouTubeEngagementCollector(CollectorMixin):
             view_count = int(stats.get('viewCount', 0))
             like_count = int(stats.get('likeCount', 0))
             comment_count = int(stats.get('commentCount', 0))
+
+            # Apply competitor's engagement thresholds: 100+ views, 10+ likes, 2+ comments
+            if view_count < 100 or like_count < 10 or comment_count < 2:
+                return None  # Skip videos that don't meet minimum engagement
 
             # Calculate age in hours
             published_at = snippet.get('publishedAt', '')

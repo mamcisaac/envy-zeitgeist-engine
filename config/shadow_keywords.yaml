@@ -1,0 +1,236 @@
+# Shadow Keywords & Meme Slang for Viral Moment Detection
+# This file contains evolving slang, meme references, and coded language
+# that reality TV fans use which might not match traditional keywords
+
+# Reality TV Slang & Coded Language
+reality_slang:
+  # Love Island specific
+  love_island:
+    - "grafting"         # Working hard for someone's attention
+    - "pied off"         # Rejected/dismissed  
+    - "ick"              # Turn-off feeling
+    - "100 percent"      # Love Island catchphrase
+    - "my type on paper" # Compatibility phrase
+    - "getting to know"  # Early dating stage
+    - "pulled for chat"  # Called aside for conversation
+    - "recoupling"       # Partner switching ceremony
+    - "casa amor"        # Temptation villa segment
+    - "islanders"        # Contestants
+    - "villa"            # The house/location
+    - "fire pit"         # Gathering place
+    - "hideaway"         # Private room
+
+  # Bachelor/Bachelorette
+  bachelor_nation:
+    - "fantasy suites"   # Overnight dates
+    - "hometowns"        # Meet the family dates
+    - "one-on-one"       # Solo date
+    - "group date"       # Multiple contestants date
+    - "rose ceremony"    # Elimination ceremony
+    - "final rose"       # Last chance/proposal
+    - "right reasons"    # Genuine intentions
+    - "journey"          # The dating process
+    - "connection"       # Romantic bond
+    - "villain edit"     # Negative portrayal
+    - "producer edit"    # Manipulated storyline
+    - "paradise"         # Bachelor in Paradise
+    - "BIP"              # Bachelor in Paradise abbreviation
+
+  # Big Brother
+  big_brother:
+    - "evicted"          # Eliminated from house
+    - "HOH"              # Head of Household
+    - "POV"              # Power of Veto
+    - "backdoor"         # Strategic elimination move
+    - "floater"          # Non-strategic player
+    - "showmance"        # Romance for show/strategy
+    - "diary room"       # Confessional interviews
+    - "live feeds"       # 24/7 streaming
+    - "comp beast"       # Competition winner
+    - "blindside"        # Unexpected betrayal
+    - "alliance"         # Strategic partnership
+    - "houseguests"      # Contestants
+
+  # Real Housewives
+  housewives:
+    - "tagline"          # Season opening line
+    - "talking head"     # Interview segments
+    - "shade"            # Subtle insult
+    - "reads"            # Insults/criticisms
+    - "pressed"          # Bothered/upset
+    - "comes for"        # Attacks/confronts
+    - "reunion"          # Season finale special
+    - "Watch What Happens" # Andy Cohen's show
+    - "WWHL"             # Watch What Happens Live
+    - "Bravo-lebrity"    # Bravo celebrity
+    - "taglines"         # Opening credits quotes
+
+# Social Media Meme Slang
+meme_slang:
+  general:
+    - "period"           # End of discussion
+    - "no cap"           # No lie/for real
+    - "fax"              # Facts/truth
+    - "periodt"          # Period with emphasis
+    - "slay"             # Did great/killed it
+    - "iconic"           # Legendary/memorable
+    - "not me"           # I can't believe
+    - "bestie"           # Friend/addressing audience
+    - "chile"            # Child (expressing disbelief)
+    - "pls"              # Please (often sarcastic)
+    - "y'all"            # You all
+    - "sis"              # Sister/addressing women
+    - "queen"            # Praising someone
+    - "king"             # Praising someone (male)
+    - "main character"   # Self-centered behavior
+    - "side character"   # Supporting role behavior
+    - "understood the assignment" # Did perfectly
+    - "it's giving"      # It resembles/feels like
+    - "ate and left no crumbs" # Performed perfectly
+    - "serving"          # Delivering/providing
+    - "rent free"        # Constantly thinking about
+    - "living for"       # Really enjoying
+    - "unpack"           # Analyze/discuss
+    - "purr"             # Agreement/approval
+    - "lowkey"           # Somewhat/secretly
+    - "highkey"          # Obviously/definitely
+    - "mid"              # Average/mediocre
+    - "bussin"           # Really good/amazing
+    - "valid"            # Reasonable/acceptable
+    - "vibe check"       # Mood assessment
+    - "energy"           # Attitude/feeling
+    - "aura"             # Presence/vibe
+
+# Drama & Controversy Terms
+drama_terms:
+  - "spillin tea"        # Sharing gossip
+  - "spill"              # Tell secrets
+  - "tea"                # Gossip/drama
+  - "messy"              # Dramatic/chaotic
+  - "pressed"            # Upset/bothered
+  - "triggered"          # Upset/offended
+  - "called out"         # Publicly criticized
+  - "dragged"            # Heavily criticized
+  - "ratio"              # More negative than positive responses
+  - "cancelled"          # Publicly condemned
+  - "problematic"        # Concerning behavior
+  - "yikes"              # Expression of concern
+  - "red flag"           # Warning sign
+  - "toxic"              # Harmful behavior
+  - "gaslighting"        # Manipulation tactic
+  - "manipulative"       # Controlling behavior
+  - "narcissistic"       # Self-centered
+  - "cringe"             # Embarrassing
+  - "secondhand embarrassment" # Embarrassed for someone else
+  - "oop"                # Expression of surprise/drama
+  - "not this"           # Disapproval
+  - "the audacity"       # Unbelievable nerve
+  - "unhinged"           # Out of control behavior
+
+# Engagement & Viral Indicators
+viral_indicators:
+  - "everyone is talking about" # Trending topic
+  - "broke the internet"        # Viral moment
+  - "iconic moment"             # Memorable scene
+  - "meme worthy"               # Shareable content
+  - "reaction worthy"           # Content that generates responses
+  - "clip going viral"          # Video spreading rapidly
+  - "twitter is losing it"      # Strong social media reaction
+  - "tiktok is obsessed"        # Platform-specific virality
+  - "everyone needs to see"     # Shareable moment
+  - "can't stop watching"       # Addictive content
+  - "rewatching"                # Repeated viewing
+  - "screenshot this"           # Memorable quote/moment
+  - "send this to"              # Shareable content
+  - "tag someone who"           # Social media engagement prompt
+
+# Platform-Specific Slang
+platform_slang:
+  tiktok:
+    - "fyp"              # For You Page
+    - "POV"              # Point of view
+    - "duet"             # Response video
+    - "stitch"           # Video combination
+    - "trending sound"   # Popular audio
+    - "algorithm"        # Content distribution system
+    - "shadowbanned"     # Reduced visibility
+
+  twitter:
+    - "quote tweet"      # Retweet with comment
+    - "QT"               # Quote tweet abbreviation
+    - "thread"           # Connected tweets
+    - "trending"         # Popular topics
+    - "timeline"         # Feed of tweets
+    - "spaces"           # Audio chat rooms
+
+  instagram:
+    - "story"            # Temporary post
+    - "reel"             # Short video
+    - "IGTV"             # Long-form video
+    - "close friends"    # Private story audience
+    - "finsta"           # Fake/private Instagram
+
+# Euphemisms & Coded Language
+coded_language:
+  relationships:
+    - "situationship"    # Undefined relationship
+    - "talking stage"    # Early dating
+    - "soft launch"      # Subtle relationship reveal
+    - "hard launch"      # Public relationship announcement
+    - "breadcrumbing"    # Minimal romantic attention
+    - "benching"         # Keeping someone as backup
+    - "ghosting"         # Suddenly stopping communication
+    - "love bombing"     # Excessive early attention
+
+  general:
+    - "unalived"         # Died (content restriction workaround)
+    - "sewerslide"       # Suicide (content restriction workaround)
+    - "corn"             # Porn (content restriction workaround)
+    - "spicy"            # Sexual/adult content
+    - "accountant"       # OnlyFans creator (euphemism)
+
+# Generational Markers
+gen_z_specific:
+  - "bestie"
+  - "periodt"
+  - "no cap"
+  - "slay queen"
+  - "it's giving"
+  - "understood the assignment"
+  - "rent free"
+  - "main character energy"
+  - "side quest"
+  - "npc behavior"
+
+millennial_specific:
+  - "stan"
+  - "ship"
+  - "feels"
+  - "dead"
+  - "I can't even"
+  - "literally dying"
+  - "obsessed"
+  - "everything"
+  - "goals"
+  - "aesthetic"
+
+# Celebrity Nicknames & References
+celebrity_nicknames:
+  reality_tv:
+    - "queen kaitlyn"    # Kaitlyn Bristowe
+    - "pilot pete"       # Peter Weber
+    - "grocery store joe" # Joe Amabile
+    - "black widow"      # Various villains
+    - "king"             # Various male favorites
+    - "mother"           # Various female favorites (Gen Z usage)
+
+# Time-Sensitive Slang (Updated Regularly)
+current_trends:
+  2025_specific:
+    - "very demure"      # TikTok trend
+    - "very mindful"     # TikTok trend companion
+    - "it's giving demure" # Variation
+    - "brat summer"      # Charli XCX cultural moment
+    - "girl dinner"      # Meal aesthetic trend
+    - "soft life"        # Lifestyle trend
+    - "bed rotting"      # Mental health/rest trend

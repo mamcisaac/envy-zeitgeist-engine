@@ -39,17 +39,32 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_trending_topics_cluster_ids_gin
 ON trending_topics USING gin(cluster_ids);
 
 -- Add constraints to ensure data quality
-ALTER TABLE trending_topics 
-ADD CONSTRAINT IF NOT EXISTS chk_trending_topics_score_range 
-CHECK (score >= 0.0 AND score <= 1.0);
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_trending_topics_score_range') THEN
+        ALTER TABLE trending_topics 
+        ADD CONSTRAINT chk_trending_topics_score_range 
+        CHECK (score >= 0.0 AND score <= 1.0);
+    END IF;
+END $$;
 
-ALTER TABLE trending_topics 
-ADD CONSTRAINT IF NOT EXISTS chk_trending_topics_headline_length 
-CHECK (length(headline) >= 10 AND length(headline) <= 200);
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_trending_topics_headline_length') THEN
+        ALTER TABLE trending_topics 
+        ADD CONSTRAINT chk_trending_topics_headline_length 
+        CHECK (length(headline) >= 10 AND length(headline) <= 200);
+    END IF;
+END $$;
 
-ALTER TABLE trending_topics 
-ADD CONSTRAINT IF NOT EXISTS chk_trending_topics_tldr_length 
-CHECK (length(tl_dr) >= 20 AND length(tl_dr) <= 500);
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_trending_topics_tldr_length') THEN
+        ALTER TABLE trending_topics 
+        ADD CONSTRAINT chk_trending_topics_tldr_length 
+        CHECK (length(tl_dr) >= 20 AND length(tl_dr) <= 500);
+    END IF;
+END $$;
 
 -- Add a timestamp for when the topic was last updated (for future use)
 ALTER TABLE trending_topics 

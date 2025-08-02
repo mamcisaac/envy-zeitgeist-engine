@@ -70,10 +70,47 @@ class EnhancedRedditClient:
                     "url": f"https://reddit.com{post.permalink}",
                     "score": post.score,
                     "num_comments": post.num_comments,
-                    "created_utc": post.created_utc
+                    "created_utc": post.created_utc,
+                    "upvote_ratio": getattr(post, 'upvote_ratio', 0.8),
+                    "num_awards": getattr(post, 'total_awards_received', 0)
                 })
         except Exception as e:
             logger.error(f"Reddit search error for r/{subreddit}: {e}")
+            raise
+
+        return posts
+
+    @retry_async(RetryConfigs.HTTP)
+    async def _get_subreddit_posts_impl(self, subreddit: str, sort: str, limit: int) -> List[Dict[str, Any]]:
+        """Implementation of getting subreddit posts by sort method."""
+        sub = self.reddit.subreddit(subreddit)
+        posts = []
+
+        try:
+            if sort == "hot":
+                post_iterator = sub.hot(limit=limit)
+            elif sort == "new":
+                post_iterator = sub.new(limit=limit)
+            elif sort == "top":
+                post_iterator = sub.top(time_filter="day", limit=limit)
+            else:
+                raise ValueError(f"Unsupported sort method: {sort}")
+
+            for post in post_iterator:
+                posts.append({
+                    "id": post.id,
+                    "title": post.title,
+                    "body": post.selftext,
+                    "url": f"https://reddit.com{post.permalink}",
+                    "score": post.score,
+                    "num_comments": post.num_comments,
+                    "created_utc": post.created_utc,
+                    "upvote_ratio": getattr(post, 'upvote_ratio', 0.8),
+                    "num_awards": getattr(post, 'total_awards_received', 0),
+                    "subreddit": subreddit
+                })
+        except Exception as e:
+            logger.error(f"Reddit posts error for r/{subreddit} ({sort}): {e}")
             raise
 
         return posts
@@ -94,6 +131,24 @@ class EnhancedRedditClient:
             return []  # Graceful degradation
         except Exception as e:
             logger.error(f"Unexpected Reddit search error: {e}")
+            return []
+
+    async def get_subreddit_posts(self, subreddit: str, sort: str = "hot", limit: int = 30) -> List[Dict[str, Any]]:
+        """Get subreddit posts by sort method with retry logic and circuit breaker protection."""
+        try:
+            rate_limiter = await self._get_rate_limiter()
+            circuit_breaker = await self._get_circuit_breaker()
+
+            async with rate_limiter:
+                result: List[Dict[str, Any]] = await circuit_breaker.call(
+                    self._get_subreddit_posts_impl, subreddit, sort, limit
+                )
+                return result
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
+            logger.error(f"Reddit posts fetch failed after retries: {e}")
+            return []  # Graceful degradation
+        except Exception as e:
+            logger.error(f"Unexpected Reddit posts error: {e}")
             return []
 
 

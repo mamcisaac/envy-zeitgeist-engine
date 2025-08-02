@@ -123,7 +123,7 @@ class EnhancedCelebrityTracker(CollectorMixin):
 
                                 # Calculate platform score (engagement per hour)
                                 age_hours = max((datetime.utcnow() - timestamp).total_seconds() / 3600, 1)
-                                platform_score = 1.0 / age_hours  # Base score, no engagement data available
+                                platform_score = min(1.0 / age_hours, 1.0)  # Base score capped at 1.0
 
                                 mention = self.create_mention(
                                     url=entry.get('link', ''),
@@ -204,7 +204,7 @@ class EnhancedCelebrityTracker(CollectorMixin):
 
                             # Calculate platform score (engagement per hour)
                             age_hours = max((datetime.utcnow() - timestamp).total_seconds() / 3600, 1)
-                            platform_score = 1.0 / age_hours  # Base score, no engagement data available
+                            platform_score = min(1.0 / age_hours, 1.0)  # Base score capped at 1.0
 
                             mention = self.create_mention(
                                 url=article.get('url', ''),
@@ -287,7 +287,7 @@ class EnhancedCelebrityTracker(CollectorMixin):
                                 # Use current timestamp for direct scrapes
                                 timestamp = datetime.utcnow()
                                 age_hours = 1.0  # Assume recent for direct scrapes
-                                platform_score = 1.0 / age_hours
+                                platform_score = min(1.0 / age_hours, 1.0)  # Cap at 1.0
 
                                 mention = self.create_mention(
                                     url=article_url,
@@ -360,7 +360,7 @@ class EnhancedCelebrityTracker(CollectorMixin):
 
                         # Calculate platform score
                         age_hours = max((datetime.utcnow() - timestamp).total_seconds() / 3600, 1)
-                        platform_score = 1.0 / age_hours
+                        platform_score = min(1.0 / age_hours, 1.0)  # Cap at 1.0
 
                         mention = self.create_mention(
                             url=result.get("link", ""),

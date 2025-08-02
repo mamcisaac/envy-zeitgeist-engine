@@ -9,9 +9,13 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Type
 
+from dotenv import load_dotenv
 from loguru import logger
 
 from .retry import RetryConfig
+
+# Load environment variables
+load_dotenv()
 
 
 @dataclass
@@ -316,6 +320,38 @@ class ConfigManager:
                 failure_threshold=3,
                 timeout_duration=120,
                 success_threshold=2,
+            ),
+        )
+
+        # Supabase Configuration
+        self._configs["supabase"] = APIConfig(
+            name="supabase",
+            base_url=os.getenv("SUPABASE_URL"),
+            api_key=os.getenv("SUPABASE_ANON_KEY"),
+            timeout=TimeoutConfig(
+                connect_timeout=10.0,
+                read_timeout=30.0,
+                total_timeout=60.0,
+            ),
+            retry=RetryConfig(
+                max_attempts=3,
+                base_delay=1.0,
+                max_delay=10.0,
+                retryable_exceptions=(
+                    ConnectionError,
+                    TimeoutError,
+                    OSError,
+                ),
+            ),
+            rate_limit=RateLimitConfig(
+                requests_per_minute=300,  # Supabase has generous limits
+                requests_per_second=10.0,
+                burst_size=20,
+            ),
+            circuit_breaker=CircuitBreakerConfig(
+                failure_threshold=5,
+                timeout_duration=60,
+                success_threshold=3,
             ),
         )
 

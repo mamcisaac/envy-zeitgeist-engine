@@ -26,6 +26,12 @@ class EnhancedNetworkPressCollector(CollectorMixin):
 
     def __init__(self) -> None:
         """Initialize the network press collector with configuration."""
+        # Competitor's specific NewsAPI sources
+        self.newsapi_sources = [
+            "entertainment-weekly", "people", "us-weekly", "e-news", 
+            "variety", "deadline", "hollywood-reporter"
+        ]
+        
         # Network press RSS feeds and direct sources
         self.press_sources: Dict[str, Dict[str, Any]] = {
             "NBC": {
@@ -88,16 +94,33 @@ class EnhancedNetworkPressCollector(CollectorMixin):
             }
         }
 
-        # Comprehensive reality TV keywords
+        # Comprehensive search keywords (from competitor + our existing)
         self.reality_keywords: List[str] = [
-            # Shows
-            "love island", "big brother", "bachelorette", "bachelor",
+            # Reality TV Shows (competitor's exact terms)
+            "reality tv", "reality television", "bachelor", "bachelorette",
+            "love island", "vanderpump rules", "big brother", "survivor",
+            "love is blind", "too hot to handle", "the circle", 
+            "temptation island", "the traitors",
+            
+            # Our existing show coverage  
             "real housewives", "the challenge", "90 day fiance",
-            "below deck", "vanderpump", "jersey shore", "love after lockup",
-            "perfect match", "selling sunset", "love is blind",
-            "too hot to handle", "the ultimatum", "married at first sight",
+            "below deck", "jersey shore", "love after lockup",
+            "perfect match", "selling sunset", "the ultimatum", 
+            "married at first sight",
 
-            # General terms
+            # Celebrity & Pop Culture (competitor's terms)
+            "celebrity news", "celebrity gossip", "celebrity scandal",
+            "red carpet", "met gala", "awards show", "oscars", 
+            "grammys", "emmys",
+            
+            # Entertainment (competitor's terms)
+            "box office", "movie premiere", "netflix", "streaming",
+            "album release", "music video", "concert tour",
+            
+            # Trending Topics (competitor's terms)
+            "viral", "trending", "influencer", "tiktok", "social media",
+
+            # General terms (our existing)
             "reality", "unscripted", "dating show", "competition series",
             "docu-series", "reality series", "casting", "premiere",
             "season finale", "reunion", "spin-off", "new season"
