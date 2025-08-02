@@ -22,8 +22,19 @@ def get_api_config(service: Optional[str] = None) -> SimpleConfig:
     """Get API configuration from environment variables."""
     config_data = {
         # Basic properties
-        "base_url": os.getenv("SUPABASE_URL"),
-        "api_key": os.getenv("SUPABASE_ANON_KEY") if service == "supabase" else os.getenv("SERPAPI_API_KEY") if service == "serpapi" else os.getenv("PPLX_API_KEY"),
+        "base_url": (
+            os.getenv("SUPABASE_URL") if service == "supabase"
+            else "https://api.perplexity.ai" if service == "perplexity"
+            else None
+        ),
+        "api_key": (
+            os.getenv("SUPABASE_ANON_KEY") if service == "supabase" 
+            else os.getenv("SERPAPI_API_KEY") if service == "serpapi"
+            else os.getenv("OPENAI_API_KEY") if service == "openai"
+            else os.getenv("ANTHROPIC_API_KEY") if service == "anthropic"
+            else os.getenv("PERPLEXITY_API_KEY") if service == "perplexity"
+            else os.getenv("PPLX_API_KEY")
+        ),
         
         # Timeout config with defaults
         "timeout": SimpleConfig({
