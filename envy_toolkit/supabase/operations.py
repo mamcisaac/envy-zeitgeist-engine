@@ -2,9 +2,10 @@
 High-level Supabase operations for mentions, topics, and other domain entities.
 """
 
+import hashlib
 import json
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 
@@ -427,3 +428,323 @@ class SupabaseOperations:
         except (RetryExhaustedError, CircuitBreakerOpenError) as e:
             logger.error(f"Failed to delete expired warm mentions: {e}")
             return 0
+
+    @collect_metrics(operation_name="get_hot_warm_posts")
+    async def get_hot_warm_posts(
+        self,
+        database_url: str,
+        hours: int = 3,
+        limit: int = 1000
+    ) -> List[Dict[str, Any]]:
+        """Get recent posts from both hot and warm storage for zeitgeist analysis."""
+        since = datetime.utcnow() - timedelta(hours=hours)
+        
+        query = """
+            SELECT 
+                id,
+                source as platform,
+                url,
+                title,
+                body,
+                timestamp,
+                platform_score,
+                entities,
+                extras,
+                storage_tier,
+                NULL as ttl_expires,
+                created_at
+            FROM raw_mentions
+            WHERE timestamp >= $1
+            AND storage_tier = 'hot'
+            
+            UNION ALL
+            
+            SELECT 
+                id,
+                source as platform,
+                url,
+                title,
+                body,
+                timestamp,
+                platform_score,
+                entities,
+                extras,
+                storage_tier,
+                ttl_expires,
+                created_at
+            FROM warm_mentions
+            WHERE timestamp >= $1
+            AND ttl_expires > NOW()
+            
+            ORDER BY timestamp DESC
+            LIMIT $2
+        """
+        
+        params = [since, limit]
+        
+        try:
+            async with self.rate_limiter:
+                records = await self.circuit_breaker.call(
+                    self.query_executor.execute_query,
+                    database_url,
+                    query,
+                    params,
+                    use_cache=True
+                )
+                return [dict(record) for record in records]
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
+            logger.error(f"Failed to get hot/warm posts: {e}")
+            return []
+
+    @collect_metrics(operation_name="get_platform_posts")
+    async def get_platform_posts(
+        self,
+        database_url: str,
+        platform: str,
+        hours: int = 3,
+        limit: int = 500
+    ) -> List[Dict[str, Any]]:
+        """Get recent posts from specific platform across hot/warm storage."""
+        since = datetime.utcnow() - timedelta(hours=hours)
+        
+        query = """
+            SELECT * FROM (
+                SELECT 
+                    id,
+                    source as platform,
+                    url,
+                    title,
+                    body,
+                    timestamp,
+                    platform_score,
+                    entities,
+                    extras,
+                    storage_tier
+                FROM raw_mentions
+                WHERE timestamp >= $1
+                AND LOWER(source) = LOWER($2)
+                AND storage_tier = 'hot'
+                
+                UNION ALL
+                
+                SELECT 
+                    id,
+                    source as platform,
+                    url,
+                    title,
+                    body,
+                    timestamp,
+                    platform_score,
+                    entities,
+                    extras,
+                    storage_tier
+                FROM warm_mentions
+                WHERE timestamp >= $1
+                AND LOWER(source) = LOWER($2)
+                AND ttl_expires > NOW()
+            ) combined
+            ORDER BY timestamp DESC
+            LIMIT $3
+        """
+        
+        params = [since, platform, limit]
+        
+        try:
+            async with self.rate_limiter:
+                records = await self.circuit_breaker.call(
+                    self.query_executor.execute_query,
+                    database_url,
+                    query,
+                    params,
+                    use_cache=True
+                )
+                return [dict(record) for record in records]
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
+            logger.error(f"Failed to get {platform} posts: {e}")
+            return []
+
+    @collect_metrics(operation_name="store_story_history")
+    async def store_story_history(
+        self,
+        database_url: str,
+        story_clusters: List[Dict[str, Any]],
+        run_timestamp: datetime
+    ) -> int:
+        """Store story cluster history for momentum tracking."""
+        if not story_clusters:
+            return 0
+        
+        query = """
+            INSERT INTO story_history (
+                cluster_id,
+                content_hash,
+                run_timestamp,
+                score,
+                engagement_total,
+                cluster_size,
+                primary_platform,
+                show_context,
+                representative_title,
+                representative_url,
+                platforms_involved
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        """
+        
+        params_list = []
+        for story in story_clusters:
+            # Generate content hash for tracking across runs
+            rep_title = story.get("representative_title", "")
+            rep_url = story.get("representative_url", "")
+            content_for_hash = f"{rep_title}:{rep_url}".lower().strip()
+            content_hash = hashlib.sha256(content_for_hash.encode()).hexdigest()
+            
+            params_list.append([
+                story.get("cluster_id"),
+                content_hash,
+                run_timestamp,
+                story.get("score", 0),
+                story.get("engagement_total", 0),
+                story.get("cluster_size", 0),
+                story.get("primary_platform", "unknown"),
+                story.get("show_context", "unknown"),
+                rep_title[:500],  # Truncate for storage
+                rep_url,
+                story.get("platforms_involved", [])
+            ])
+        
+        try:
+            async with self.rate_limiter:
+                affected = await self.circuit_breaker.call(
+                    self.query_executor.execute_many,
+                    database_url,
+                    query,
+                    params_list,
+                    batch_size=50
+                )
+                logger.info(f"Stored {affected} story history records")
+                return affected
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
+            logger.error(f"Failed to store story history: {e}")
+            return 0
+
+    @collect_metrics(operation_name="get_previous_story_scores")
+    async def get_previous_story_scores(
+        self,
+        database_url: str,
+        lookback_hours: int = 6
+    ) -> Dict[str, float]:
+        """Get previous story scores for momentum calculation."""
+        query = """
+            SELECT content_hash, score
+            FROM get_previous_story_scores($1)
+        """
+        
+        params = [lookback_hours]
+        
+        try:
+            async with self.rate_limiter:
+                records = await self.circuit_breaker.call(
+                    self.query_executor.execute_query,
+                    database_url,
+                    query,
+                    params,
+                    use_cache=True
+                )
+                return {record[0]: float(record[1]) for record in records}
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
+            logger.error(f"Failed to get previous story scores: {e}")
+            return {}
+
+    @collect_metrics(operation_name="get_current_medians")
+    async def get_current_medians(
+        self,
+        database_url: str,
+        platform_context_pairs: List[Tuple[str, str]]
+    ) -> Dict[str, float]:
+        """Get current engagement medians for platform/context pairs."""
+        if not platform_context_pairs:
+            return {}
+        
+        # Use the database function to get medians with fallbacks
+        query = """
+            SELECT 
+                $1 || ':' || $2 as median_key,
+                get_current_median($1, $2) as median_value
+        """
+        
+        params_list = [[platform, context] for platform, context in platform_context_pairs]
+        
+        try:
+            async with self.rate_limiter:
+                records = await self.circuit_breaker.call(
+                    self.query_executor.execute_many,
+                    database_url,
+                    query,
+                    params_list,
+                    batch_size=100
+                )
+                
+                medians = {}
+                for batch_results in records:
+                    if isinstance(batch_results, list):
+                        for record in batch_results:
+                            if len(record) >= 2:
+                                medians[record[0]] = float(record[1])
+                
+                return medians
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
+            logger.error(f"Failed to get current medians: {e}")
+            return {}
+
+    @collect_metrics(operation_name="get_story_momentum_trends")
+    async def get_story_momentum_trends(
+        self,
+        database_url: str,
+        hours_back: int = 24,
+        min_appearances: int = 2
+    ) -> List[Dict[str, Any]]:
+        """Get story momentum trends for analysis."""
+        query = """
+            SELECT 
+                content_hash,
+                show_context,
+                appearances_count,
+                latest_score,
+                earliest_score,
+                score_change_percent,
+                momentum_direction,
+                latest_title,
+                latest_platforms
+            FROM get_story_momentum_trends($1, $2)
+        """
+        
+        params = [hours_back, min_appearances]
+        
+        try:
+            async with self.rate_limiter:
+                records = await self.circuit_breaker.call(
+                    self.query_executor.execute_query,
+                    database_url,
+                    query,
+                    params,
+                    use_cache=True
+                )
+                
+                trends = []
+                for record in records:
+                    trends.append({
+                        "content_hash": record[0],
+                        "show_context": record[1],
+                        "appearances_count": record[2],
+                        "latest_score": float(record[3]),
+                        "earliest_score": float(record[4]),
+                        "score_change_percent": float(record[5]),
+                        "momentum_direction": record[6],
+                        "latest_title": record[7],
+                        "latest_platforms": record[8]
+                    })
+                
+                return trends
+        except (RetryExhaustedError, CircuitBreakerOpenError) as e:
+            logger.error(f"Failed to get story momentum trends: {e}")
+            return []
