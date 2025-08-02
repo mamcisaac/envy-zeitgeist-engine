@@ -289,15 +289,6 @@ class BurstScheduler:
             logger.error(f"Failed to get baseline trends: {e}")
             return {}
     
-    def _in_cooldown(self) -> bool:
-        """Check if we're in cooldown period from recent burst."""
-        if not self.active_triggers:
-            return False
-        
-        # Check if any active trigger is still in cooldown
-        now = datetime.utcnow()
-        return any(trigger.cooldown_until > now for trigger in self.active_triggers)
-    
     def _should_exit_burst_mode(self) -> bool:
         """Check if we should exit burst mode."""
         if self.burst_started_at is None:

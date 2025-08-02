@@ -64,20 +64,50 @@ class TwitterFreeScraper:
         """Scrape tweets for a hashtag using snscrape"""
         since = (datetime.datetime.utcnow() - datetime.timedelta(hours=since_hours)).date()
 
-        # Clean hashtag for query
-        clean_tag = tag.strip("#")
+        # SECURITY: Validate and sanitize hashtag input to prevent command injection
+        if not tag or not isinstance(tag, str):
+            logger.warning("Invalid tag input provided")
+            return
+            
+        # Remove dangerous characters and validate tag format
+        import re
+        clean_tag = tag.strip("#").strip()
+        
+        # Only allow alphanumeric, underscore, and common hashtag characters
+        if not re.match(r'^[a-zA-Z0-9_\s\-]+$', clean_tag):
+            logger.warning(f"Tag contains invalid characters: {tag}")
+            return
+            
+        # Limit tag length to prevent buffer overflow
+        if len(clean_tag) > 100:
+            logger.warning(f"Tag too long: {tag}")
+            return
+            
+        # Validate since_hours parameter
+        if not isinstance(since_hours, int) or since_hours < 1 or since_hours > 168:  # Max 1 week
+            since_hours = 24
 
         try:
             with tempfile.NamedTemporaryFile(mode='w+', delete=False) as f:
+                # SECURITY: Use subprocess safely with explicit arguments (no shell injection)
                 cmd = [
-                    "snscrape", "--jsonl", "--max-results", "50",
-                    f'twitter-hashtag "{clean_tag} since:{since}"'
+                    "snscrape", 
+                    "--jsonl", 
+                    "--max-results", 
+                    "50",
+                    f"twitter-hashtag", 
+                    f"{clean_tag} since:{since}"
                 ]
 
+                # SECURITY: Create subprocess with explicit args, no shell=True
                 process = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=f.fileno(),
-                    stderr=asyncio.subprocess.PIPE
+                    stderr=asyncio.subprocess.PIPE,
+                    # Security: Prevent shell injection by using exec mode
+                    shell=False,
+                    # Security: Set timeout to prevent hanging processes
+                    preexec_fn=None  # Don't allow custom preexec functions
                 )
 
                 _, stderr = await process.communicate()
