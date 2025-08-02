@@ -68,27 +68,77 @@ class DatabaseSecurity:
     
     @staticmethod
     def escape_vector_embedding(embedding: List[float]) -> str:
-        """Safely escape vector embeddings for PostgreSQL."""
+        """Safely escape vector embeddings for PostgreSQL with enhanced security."""
         if not embedding or not isinstance(embedding, list):
             return "NULL"
         
         try:
-            # Validate all values are numeric
+            # SECURITY: Strict dimension validation for OpenAI embeddings
+            expected_dimensions = 1536
+            if len(embedding) != expected_dimensions:
+                logger.warning(f"Invalid embedding dimension: {len(embedding)}, expected {expected_dimensions}")
+                return "NULL"
+            
+            # SECURITY: Enhanced validation and bounds checking
             safe_values = []
-            for val in embedding[:1536]:  # Limit to OpenAI embedding size
+            for i, val in enumerate(embedding):
                 try:
                     float_val = float(val)
-                    if -10.0 <= float_val <= 10.0:  # Reasonable bounds for embeddings
-                        safe_values.append(str(float_val))
-                    else:
-                        safe_values.append("0.0")
-                except (ValueError, TypeError):
-                    safe_values.append("0.0")
+                    
+                    # SECURITY: Stricter bounds checking (OpenAI embeddings typically -1 to 1)
+                    if not (-2.0 <= float_val <= 2.0):
+                        logger.warning(f"Embedding value out of bounds at index {i}: {float_val}")
+                        return "NULL"
+                    
+                    # Format with limited precision to prevent injection
+                    safe_values.append(f"{float_val:.6f}")
+                    
+                except (ValueError, TypeError, OverflowError):
+                    logger.warning(f"Invalid embedding value at index {i}: {val}")
+                    return "NULL"
+            
+            # SECURITY: Final integrity check
+            if len(safe_values) != expected_dimensions:
+                return "NULL"
             
             return f"[{','.join(safe_values)}]"
+            
         except Exception as e:
             logger.error(f"Failed to escape embedding: {e}")
             return "NULL"
+    
+    @staticmethod
+    def validate_embedding_integrity(embedding_str: str) -> bool:
+        """Validate embedding string integrity and format."""
+        if not embedding_str or embedding_str == "NULL":
+            return True
+        
+        # Check basic format
+        if not (embedding_str.startswith('[') and embedding_str.endswith(']')):
+            return False
+        
+        try:
+            # Parse and validate
+            content = embedding_str[1:-1]  # Remove brackets
+            if not content:
+                return False
+                
+            values = content.split(',')
+            
+            # Check dimension
+            if len(values) != 1536:
+                return False
+            
+            # Validate each value
+            for value_str in values:
+                value = float(value_str.strip())
+                if not (-2.0 <= value <= 2.0):
+                    return False
+            
+            return True
+            
+        except (ValueError, TypeError):
+            return False
     
     @staticmethod
     def build_parameterized_query(base_query: str, params: List[Any]) -> tuple:

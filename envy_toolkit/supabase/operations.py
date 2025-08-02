@@ -44,7 +44,12 @@ class SupabaseOperations:
             # SECURITY: Safely escape vector embeddings to prevent injection
             from ..security_patches import database_security
             embedding_str = database_security.escape_vector_embedding(embedding)
-            if embedding_str == "NULL":
+            
+            # SECURITY: Additional integrity validation
+            if not database_security.validate_embedding_integrity(embedding_str):
+                logger.warning("Embedding failed integrity validation")
+                embedding_str = None
+            elif embedding_str == "NULL":
                 embedding_str = None
         else:
             embedding_str = None
@@ -109,7 +114,12 @@ class SupabaseOperations:
                 # SECURITY: Safely escape vector embeddings to prevent injection
                 from ..security_patches import database_security
                 embedding_str = database_security.escape_vector_embedding(embedding)
-                if embedding_str == "NULL":
+                
+                # SECURITY: Additional integrity validation
+                if not database_security.validate_embedding_integrity(embedding_str):
+                    logger.warning("Embedding failed integrity validation")
+                    embedding_str = None
+                elif embedding_str == "NULL":
                     embedding_str = None
             else:
                 embedding_str = None
@@ -333,7 +343,12 @@ class SupabaseOperations:
                 # SECURITY: Safely escape vector embeddings to prevent injection
                 from ..security_patches import database_security
                 embedding_str = database_security.escape_vector_embedding(embedding)
-                if embedding_str == "NULL":
+                
+                # SECURITY: Additional integrity validation
+                if not database_security.validate_embedding_integrity(embedding_str):
+                    logger.warning("Embedding failed integrity validation")
+                    embedding_str = None
+                elif embedding_str == "NULL":
                     embedding_str = None
             else:
                 embedding_str = None

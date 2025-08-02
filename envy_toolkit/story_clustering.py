@@ -368,17 +368,40 @@ class CrossPlatformStoryClustering:
             embeddings, _ = await embedding_cache.get_cached_embeddings(group_posts, platform)
             all_embeddings.extend(embeddings)
         
-        # Convert to numpy array for clustering
+        # SECURITY: Memory safety check before clustering
         embeddings_array = np.array(all_embeddings)
         
-        logger.info("Performing HDBSCAN clustering")
+        # Calculate memory usage
+        memory_mb = embeddings_array.nbytes / 1024 / 1024
+        max_memory_mb = 1000  # 1GB limit for clustering
         
-        # Perform HDBSCAN clustering
-        clusterer = hdbscan.HDBSCAN(
-            min_cluster_size=self.min_cluster_size,
-            metric="euclidean",
-            cluster_selection_method="eom"
-        )
+        if memory_mb > max_memory_mb:
+            logger.error(f"Embedding array too large: {memory_mb:.1f}MB > {max_memory_mb}MB")
+            raise MemoryError(f"Embedding array exceeds memory limit: {memory_mb:.1f}MB")
+        
+        if len(embeddings_array) > 10000:  # Reasonable limit for clustering
+            logger.warning(f"Large dataset for clustering: {len(embeddings_array)} embeddings")
+            # Truncate to prevent OOM
+            embeddings_array = embeddings_array[:10000]
+            logger.warning("Truncated embeddings to 10,000 for memory safety")
+        
+        logger.info(f"Performing HDBSCAN clustering on {len(embeddings_array)} embeddings ({memory_mb:.1f}MB)")
+        
+        # Perform HDBSCAN clustering with memory monitoring
+        try:
+            clusterer = hdbscan.HDBSCAN(
+                min_cluster_size=self.min_cluster_size,
+                metric="euclidean",
+                cluster_selection_method="eom",
+                memory=max_memory_mb * 1024 * 1024  # Set memory limit
+            )
+        except TypeError:
+            # Fallback if memory parameter not supported
+            clusterer = hdbscan.HDBSCAN(
+                min_cluster_size=self.min_cluster_size,
+                metric="euclidean",
+                cluster_selection_method="eom"
+            )
         
         cluster_labels = clusterer.fit_predict(embeddings_array)
         posts_df["cluster"] = cluster_labels

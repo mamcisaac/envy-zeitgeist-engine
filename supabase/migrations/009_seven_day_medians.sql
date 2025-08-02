@@ -126,7 +126,7 @@ BEGIN
     -- Calculate medians from both hot and warm storage
     FOR rec IN
         WITH all_posts AS (
-            -- Hot storage posts
+            -- Hot storage posts (SECURE: Using parameterized date range)
             SELECT 
                 COALESCE(LOWER(source), 'unknown') as platform,
                 extract_platform_context(
@@ -159,7 +159,8 @@ BEGIN
                     COALESCE(LOWER(source), 'unknown')
                 ) as raw_engagement
             FROM raw_mentions 
-            WHERE timestamp::DATE BETWEEN start_date AND end_date
+            WHERE timestamp >= start_date 
+            AND timestamp <= end_date + INTERVAL '1 day'
             AND storage_tier = 'hot'
             
             UNION ALL
@@ -197,7 +198,8 @@ BEGIN
                     COALESCE(LOWER(source), 'unknown')
                 ) as raw_engagement
             FROM warm_mentions 
-            WHERE timestamp::DATE BETWEEN start_date AND end_date
+            WHERE timestamp >= start_date 
+            AND timestamp <= end_date + INTERVAL '1 day'
             AND ttl_expires > NOW()
         ),
         median_calculations AS (

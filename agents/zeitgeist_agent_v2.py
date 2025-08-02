@@ -227,14 +227,33 @@ class ZeitgeistAgentV2:
                 # Stage 2: Get previous scores for momentum calculation
                 previous_scores = await self._get_previous_scores()
                 
-                # Stage 3: Perform story clustering
-                story_clusters = await self.story_clustering.cluster_stories(
-                    posts, previous_scores
-                )
-                
-                if not story_clusters:
-                    logger.warning("No story clusters generated")
-                    return self._empty_brief(run_timestamp, "no_clusters")
+                # Stage 3: Perform story clustering with error recovery
+                try:
+                    story_clusters = await self.story_clustering.cluster_stories(
+                        posts, previous_scores
+                    )
+                    
+                    if not story_clusters:
+                        logger.warning("No story clusters generated")
+                        return self._empty_brief(run_timestamp, "no_clusters")
+                        
+                except MemoryError as e:
+                    logger.error(f"Memory exhaustion during clustering: {e}")
+                    # Fallback: Try with smaller dataset
+                    limited_posts = posts[:1000]  # Reduce dataset size
+                    logger.info(f"Retrying clustering with {len(limited_posts)} posts")
+                    
+                    try:
+                        story_clusters = await self.story_clustering.cluster_stories(
+                            limited_posts, previous_scores
+                        )
+                    except Exception as fallback_error:
+                        logger.error(f"Fallback clustering also failed: {fallback_error}")
+                        return self._empty_brief(run_timestamp, "clustering_failed", str(fallback_error))
+                        
+                except Exception as e:
+                    logger.error(f"Clustering failed: {e}")
+                    return self._empty_brief(run_timestamp, "clustering_error", str(e))
                 
                 logger.info(f"📖 Generated {len(story_clusters)} story clusters")
                 
