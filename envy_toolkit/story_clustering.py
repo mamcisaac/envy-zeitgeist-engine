@@ -63,33 +63,44 @@ class PlatformEngagementCalculator:
         """Calculate raw engagement score based on platform-specific rules."""
         platform = platform.lower()
         
+        # Extract metrics from both direct fields and extras dict
+        def get_metric(key_variants):
+            for key in key_variants:
+                # Check direct post fields first
+                if post.get(key):
+                    return float(post[key])
+                # Check extras dict
+                if post.get("extras", {}).get(key):
+                    return float(post["extras"][key])
+            return 0.0
+        
         if platform == "reddit":
-            upvotes = post.get("score", post.get("upvotes", 0))
-            comments = post.get("num_comments", post.get("comments", 0))
-            awards = post.get("total_awards_received", post.get("awards", 0))
+            upvotes = get_metric(["score", "upvotes"])
+            comments = get_metric(["num_comments", "comments"])
+            awards = get_metric(["total_awards_received", "awards"])
             return upvotes + comments * 2 + awards * 5
             
         elif platform == "tiktok":
-            likes = post.get("likes", post.get("like_count", 0))
-            comments = post.get("comments", post.get("comment_count", 0))
-            shares = post.get("shares", post.get("share_count", 0))
+            likes = get_metric(["likes", "like_count"])
+            comments = get_metric(["comments", "comment_count"])
+            shares = get_metric(["shares", "share_count"])
             return likes + comments * 2 + shares * 3
             
         elif platform == "youtube":
-            views = post.get("views", post.get("view_count", 0))
-            likes = post.get("likes", post.get("like_count", 0))
-            comments = post.get("comments", post.get("comment_count", 0))
+            views = get_metric(["views", "view_count"])
+            likes = get_metric(["likes", "like_count"])
+            comments = get_metric(["comments", "comment_count"])
             return views * 0.01 + likes * 0.5 + comments * 2
             
         elif platform == "twitter":
-            likes = post.get("likes", post.get("favorite_count", 0))
-            retweets = post.get("retweets", post.get("retweet_count", 0))
-            replies = post.get("replies", post.get("reply_count", 0))
+            likes = get_metric(["likes", "favorite_count"])
+            retweets = get_metric(["retweets", "retweet_count"])
+            replies = get_metric(["replies", "reply_count"])
             return likes + retweets * 2 + replies * 2
             
         elif platform == "instagram":
-            likes = post.get("likes", post.get("like_count", 0))
-            comments = post.get("comments", post.get("comment_count", 0))
+            likes = get_metric(["likes", "like_count"])
+            comments = get_metric(["comments", "comment_count"])
             return likes + comments * 2
             
         else:
@@ -389,13 +400,16 @@ class CrossPlatformStoryClustering:
         
         # Perform HDBSCAN clustering with memory monitoring
         try:
+            # Try with memory parameter (scikit-learn Memory object)
+            from sklearn.utils import Memory
+            memory = Memory(location=None, verbose=0)  # In-memory cache
             clusterer = hdbscan.HDBSCAN(
                 min_cluster_size=self.min_cluster_size,
                 metric="euclidean",
                 cluster_selection_method="eom",
-                memory=max_memory_mb * 1024 * 1024  # Set memory limit
+                memory=memory
             )
-        except TypeError:
+        except (TypeError, ImportError):
             # Fallback if memory parameter not supported
             clusterer = hdbscan.HDBSCAN(
                 min_cluster_size=self.min_cluster_size,
